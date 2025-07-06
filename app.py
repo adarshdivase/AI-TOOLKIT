@@ -1,251 +1,251 @@
-    import streamlit as st
-    import requests
-    import io
-    import time
-    import json
-    import base64
-    import pandas as pd
-    from datetime import datetime
-    import plotly.express as px
-    import plotly.graph_objects as go
-    from typing import Dict, Any
-    import hashlib
-    from PIL import Image
-    import numpy as np
+import streamlit as st
+import requests
+import io
+import time
+import json
+import base64
+import pandas as pd
+from datetime import datetime
+import plotly.express as px
+import plotly.graph_objects as go
+from typing import Dict, Any
+import hashlib
+from PIL import Image
+import numpy as np
 
-    # --- Configuration ---
-    # IMPORTANT: This should be the base URL of your Hugging Face Space.
-    # The /api suffix will be added dynamically where needed for specific endpoints.
-    API_BASE_URL = "https://huggingface.co/spaces/adarshdivase/ai-toolkit-backend"
+# --- Configuration ---
+# IMPORTANT: This should be the base URL of your Hugging Face Space.
+# The /api suffix will be added dynamically where needed for specific endpoints.
+API_BASE_URL = "https://huggingface.co/spaces/adarshdivase/ai-toolkit-backend"
 
-    st.set_page_config(
-        page_title="AI Services Toolkit Pro",
-        page_icon="🤖",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
+st.set_page_config(
+    page_title="AI Services Toolkit Pro",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-    # --- Custom CSS for better styling ---
-    st.markdown("""
-    <style>
-        .main-header {
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            padding: 1rem;
-            border-radius: 10px;
-            color: white;
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        
-        .feature-card {
-            background: #f8f9fa;
-            padding: 1.5rem;
-            border-radius: 10px;
-            border-left: 4px solid #667eea;
-            margin: 1rem 0;
-        }
-        
-        .metric-card {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            color: white;
-            padding: 1rem;
-            border-radius: 10px;
-            text-align: center;
-        }
-        
-        .success-message {
-            background: #d4edda;
-            color: #155724;
-            padding: 1rem;
-            border-radius: 5px;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .error-message {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 1rem;
-            border-radius: 5px;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 2px;
-        }
-        
-        .stTabs [data-baseweb="tab"] {
-            height: 50px;
-            background-color: #f0f2f6;
-            border-radius: 10px 10px 0 0;
-            color: #262730;
-            font-weight: 500;
-        }
-        
-        .stTabs [aria-selected="true"] {
-            background-color: #667eea;
-            color: white;
-        }
-        
-        .upload-section {
-            border: 2px dashed #667eea;
-            border-radius: 10px;
-            padding: 2rem;
-            text-align: center;
-            background: #f8f9ff;
-        }
-        
-        .stats-container {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 1rem;
-            border-radius: 10px;
-            margin: 1rem 0;
-        }
-        
-        .sidebar-card {
-            background: #f8f9fa;
-            padding: 1rem;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
-            margin-bottom: 1rem;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+# --- Custom CSS for better styling ---
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .feature-card {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 4px solid #667eea;
+        margin: 1rem 0;
+    }
+    
+    .metric-card {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        color: white;
+        padding: 1rem;
+        border-radius: 10px;
+        text-align: center;
+    }
+    
+    .success-message {
+        background: #d4edda;
+        color: #155724;
+        padding: 1rem;
+        border-radius: 5px;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .error-message {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 1rem;
+        border-radius: 5px;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: #f0f2f6;
+        border-radius: 10px 10px 0 0;
+        color: #262730;
+        font-weight: 500;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #667eea;
+        color: white;
+    }
+    
+    .upload-section {
+        border: 2px dashed #667eea;
+        border-radius: 10px;
+        padding: 2rem;
+        text-align: center;
+        background: #f8f9ff;
+    }
+    
+    .stats-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+    }
+    
+    .sidebar-card {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+        margin-bottom: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-    # --- Session State Initialization ---
-    if 'history' not in st.session_state:
-        st.session_state.history = []
-    if 'favorites' not in st.session_state:
-        st.session_state.favorites = []
-    if 'api_calls_count' not in st.session_state:
-        st.session_state.api_calls_count = 0
-    if 'user_preferences' not in st.session_state:
-        st.session_state.user_preferences = {
-            'theme': 'Light',
-            'default_voice': 'Female',
-            'default_language': 'English',
-            'auto_save': True
-        }
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []
-    if 'translation_history' not in st.session_state:
-        st.session_state.translation_history = []
-    if 'translation_text_input' not in st.session_state:
-        st.session_state.translation_text_input = ""
-    if 'translation_source' not in st.session_state:
-        st.session_state.translation_source = "Auto-detect"
-    if 'translation_target' not in st.session_state:
-        st.session_state.translation_target = "English"
-    if 'generation_text_input' not in st.session_state:
-        st.session_state.generation_text_input = "Once upon a time,"
-    if 'qa_context_input' not in st.session_state:
-        st.session_state.qa_context_input = ""
-    if 'qa_question_input' not in st.session_state:
-        st.session_state.qa_question_input = ""
-    if 'chat_input' not in st.session_state:
-        st.session_state.chat_input = ""
+# --- Session State Initialization ---
+if 'history' not in st.session_state:
+    st.session_state.history = []
+if 'favorites' not in st.session_state:
+    st.session_state.favorites = []
+if 'api_calls_count' not in st.session_state:
+    st.session_state.api_calls_count = 0
+if 'user_preferences' not in st.session_state:
+    st.session_state.user_preferences = {
+        'theme': 'Light',
+        'default_voice': 'Female',
+        'default_language': 'English',
+        'auto_save': True
+    }
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'translation_history' not in st.session_state:
+    st.session_state.translation_history = []
+if 'translation_text_input' not in st.session_state:
+    st.session_state.translation_text_input = ""
+if 'translation_source' not in st.session_state:
+    st.session_state.translation_source = "Auto-detect"
+if 'translation_target' not in st.session_state:
+    st.session_state.translation_target = "English"
+if 'generation_text_input' not in st.session_state:
+    st.session_state.generation_text_input = "Once upon a time,"
+if 'qa_context_input' not in st.session_state:
+    st.session_state.qa_context_input = ""
+if 'qa_question_input' not in st.session_state:
+    st.session_state.qa_question_input = ""
+if 'chat_input' not in st.session_state:
+    st.session_state.chat_input = ""
 
 
-    # --- Helper Functions ---
-    @st.cache_data(ttl=3) # Cache backend status for 3 seconds to avoid excessive API calls
-    def get_backend_status():
-        """Checks the backend status by pinging the /api/status endpoint."""
-        try:
-            # Construct the full URL to the /api/status endpoint
-            response = requests.get(f"{API_BASE_URL}/api/status", timeout=2)
-            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
-            data = response.json()
-            return data.get("models_loaded", False), None
-        except requests.exceptions.ConnectionError:
-            return False, "Connection Error: Backend server not running or unreachable."
-        except requests.exceptions.Timeout:
-            return False, "Timeout Error: Backend server took too long to respond."
-        except requests.exceptions.RequestException as e:
-            return False, f"An unexpected error occurred: {e}"
+# --- Helper Functions ---
+@st.cache_data(ttl=3) # Cache backend status for 3 seconds to avoid excessive API calls
+def get_backend_status():
+    """Checks the backend status by pinging the /api/status endpoint."""
+    try:
+        # Construct the full URL to the /api/status endpoint
+        response = requests.get(f"{API_BASE_URL}/api/status", timeout=2)
+        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        data = response.json()
+        return data.get("models_loaded", False), None
+    except requests.exceptions.ConnectionError:
+        return False, "Connection Error: Backend server not running or unreachable."
+    except requests.exceptions.Timeout:
+        return False, "Timeout Error: Backend server took too long to respond."
+    except requests.exceptions.RequestException as e:
+        return False, f"An unexpected error occurred: {e}"
 
-    def log_to_history(service: str, input_data: str, output_data: str, success: bool = True):
-        """
-        Logs API calls to the session history.
-        Input and output are truncated for display in the history table.
-        """
-        st.session_state.history.append({
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'service': service,
-            'input': input_data[:100] + "..." if len(input_data) > 100 else input_data,
-            'output': output_data[:100] + "..." if len(output_data) > 100 else output_data,
-            'success': success
-        })
-        st.session_state.api_calls_count += 1
+def log_to_history(service: str, input_data: str, output_data: str, success: bool = True):
+    """
+    Logs API calls to the session history.
+    Input and output are truncated for display in the history table.
+    """
+    st.session_state.history.append({
+        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'service': service,
+        'input': input_data[:100] + "..." if len(input_data) > 100 else input_data,
+        'output': output_data[:100] + "..." if len(output_data) > 100 else output_data,
+        'success': success
+    })
+    st.session_state.api_calls_count += 1
 
-    def display_spinner_and_message(message):
-        """Displays a spinner and a message for better UX during processing."""
-        with st.spinner(message):
-            time.sleep(0.5)  # Brief pause for UX to show spinner
+def display_spinner_and_message(message):
+    """Displays a spinner and a message for better UX during processing."""
+    with st.spinner(message):
+        time.sleep(0.5)  # Brief pause for UX to show spinner
 
-    def display_error(error_message):
-        """Displays an error message in a styled box."""
-        st.error(f"🚨 Error: {error_message}")
+def display_error(error_message):
+    """Displays an error message in a styled box."""
+    st.error(f"🚨 Error: {error_message}")
 
-    def display_success(message):
-        """Displays a success message in a styled box."""
-        st.success(f"✅ {message}")
+def display_success(message):
+    """Displays a success message in a styled box."""
+    st.success(f"✅ {message}")
 
-    def create_download_link(data, filename, text):
-        """Creates an HTML download link for given data."""
-        b64 = base64.b64encode(data).decode()
-        return f'<a href="data:application/octet-stream;base64,{b64}" download="{filename}">{text}</a>'
+def create_download_link(data, filename, text):
+    """Creates an HTML download link for given data."""
+    b64 = base64.b64encode(data).decode()
+    return f'<a href="data:application/octet-stream;base64,{b64}" download="{filename}">{text}</a>'
 
-    def add_to_favorites(item_type: str, content: dict):
-        """Adds an item to the session favorites list."""
-        st.session_state.favorites.append({
-            'type': item_type,
-            'content': content,
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
+def add_to_favorites(item_type: str, content: dict):
+    """Adds an item to the session favorites list."""
+    st.session_state.favorites.append({
+        'type': item_type,
+        'content': content,
+        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
 
-    # --- AI Service Components ---
+# --- AI Service Components ---
 
-    def sentiment_analysis_component():
-        """Streamlit component for Sentiment Analysis."""
-        st.header("🎭 Sentiment Analysis")
-        st.write("Determine the emotional tone of text with advanced analytics.")
+def sentiment_analysis_component():
+    """Streamlit component for Sentiment Analysis."""
+    st.header("🎭 Sentiment Analysis")
+    st.write("Determine the emotional tone of text with advanced analytics.")
 
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            text_input = st.text_area(
-                "Enter text to analyze sentiment:", 
-                height=150, 
-                key="sentiment_text_input",
-                placeholder="Enter your text here..."
-            )
-        
-        with col2:
-            st.subheader("Analysis Options")
-            detailed_analysis = st.checkbox("Detailed Analysis", value=False)
-            emotion_detection = st.checkbox("Emotion Detection", value=False)
-            confidence_threshold = st.slider("Confidence Threshold", 0.5, 1.0, 0.8, 0.05)
-            
-        st.subheader("📊 Batch Analysis")
-        uploaded_file = st.file_uploader(
-            "Upload CSV for batch sentiment analysis", 
-            type=['csv'], 
-            key="sentiment_batch",
-            help="Upload a CSV file with a text column for batch analysis"
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        text_input = st.text_area(
+            "Enter text to analyze sentiment:", 
+            height=150, 
+            key="sentiment_text_input",
+            placeholder="Enter your text here..."
         )
+    
+    with col2:
+        st.subheader("Analysis Options")
+        detailed_analysis = st.checkbox("Detailed Analysis", value=False)
+        emotion_detection = st.checkbox("Emotion Detection", value=False)
+        confidence_threshold = st.slider("Confidence Threshold", 0.5, 1.0, 0.8, 0.05)
         
-        if uploaded_file:
-            try:
-                df = pd.read_csv(uploaded_file)
-                st.write("📋 Preview:", df.head())
-                if len(df.columns) > 0:
-                    text_column = st.selectbox("Select text column:", df.columns)
-                else:
-                    st.error("CSV file appears to be empty or invalid.")
-                    return
-            except Exception as e:
-                st.error(f"Error reading CSV file: {e}")
+    st.subheader("📊 Batch Analysis")
+    uploaded_file = st.file_uploader(
+        "Upload CSV for batch sentiment analysis", 
+        type=['csv'], 
+        key="sentiment_batch",
+        help="Upload a CSV file with a text column for batch analysis"
+    )
+    
+    if uploaded_file:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.write("📋 Preview:", df.head())
+            if len(df.columns) > 0:
+                text_column = st.selectbox("Select text column:", df.columns)
+            else:
+                st.error("CSV file appears to be empty or invalid.")
                 return
+        except Exception as e:
+            st.error(f"Error reading CSV file: {e}")
+            return
 
         if st.button("🔍 Analyze Sentiment", key="sentiment_button", use_container_width=True):
             if not text_input.strip() and not uploaded_file:
