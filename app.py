@@ -113,7 +113,7 @@ st.markdown("""
     }
 
     /* Force dark text for readability within specific light-colored output divs */
-    /* This targets the <p> and <strong> tags within the custom-styled divs */
+    /* This targets any p, strong, h4, h5 tags directly within the custom-styled divs */
     div[data-testid="stMarkdown"] div[style*="background"] p,
     div[data-testid="stMarkdown"] div[style*="background"] strong,
     div[data-testid="stMarkdown"] div[style*="background"] h4,
@@ -127,6 +127,11 @@ st.markdown("""
     div[data-testid="stMarkdown"] div[style*="background: green;"] p,
     div[data-testid="stMarkdown"] div[style*="background: red;"] p {
         color: white !important;
+    }
+
+    /* Specific for code blocks that Streamlit wraps */
+    code {
+        color: #333333 !important; /* Ensure code blocks are readable */
     }
 
 </style>
@@ -164,11 +169,12 @@ if 'qa_context_input' not in st.session_state:
     st.session_state.qa_context_input = ""
 if 'qa_question_input' not in st.session_state:
     st.session_state.qa_question_input = ""
-# Corrected chat_input initialization for proper use with text_input value
-if 'chat_input' not in st.session_state:
+
+# Chatbot specific session state variables
+if 'chat_input' not in st.session_state: # This will hold the current text input value
     st.session_state.chat_input = ""
-if 'last_chat_input_processed' not in st.session_state: # To prevent duplicate submissions on rerun
-    st.session_state.last_chat_input_processed = ""
+if 'chat_submitted' not in st.session_state: # Flag to check if send button was pressed
+    st.session_state.chat_submitted = False
 
 
 # --- Helper Functions ---
@@ -1063,12 +1069,12 @@ def chatbot_component():
         if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_button"):
             st.session_state.chat_history = []
             st.session_state.chat_input = "" # Clear the input box value
-            st.session_state.last_chat_input_processed = "" # Reset processed flag
+            st.session_state.chat_submitted = False # Reset submitted flag
             st.rerun()
     
     with col1:
         st.subheader("💬 Chat History")
-        # Use a container for chat history, and ideally ensure it scrolls to bottom
+        # Use a container for chat history, and ensure it scrolls to bottom
         chat_container = st.container(height=400) 
         
         with chat_container:
@@ -1082,25 +1088,25 @@ def chatbot_component():
             if not st.session_state.chat_history:
                 st.info("👋 Start a conversation! Type your message below.")
     
+    # Define a callback function to handle sending the message
+    def handle_chat_send():
+        st.session_state.chat_submitted = True
+        st.session_state.chat_input = st.session_state.main_chat_input_widget # Capture current text input value
+
     # Text input for user message
-    # We use a distinct key and update st.session_state.chat_input via on_change
-    # This allows quick prompts to modify st.session_state.chat_input without conflict.
-    user_message = st.text_input(
+    user_message_widget = st.text_input(
         "Type your message:", 
         key="main_chat_input_widget", # Unique key for this widget
         placeholder="Ask me anything...",
         value=st.session_state.chat_input, # This widget's value is controlled by session state
-        on_change=lambda: st.session_state.update(chat_input=st.session_state.main_chat_input_widget)
-        # ^ This callback ensures st.session_state.chat_input is updated when user types
+        on_change=handle_chat_send if st.session_state.chat_input != st.session_state.main_chat_input_widget else None # Trigger on_change only if text actually changed
     )
     
     col1, col2 = st.columns([4, 1])
     with col1:
-        # The user_message variable now holds the most up-to-date value from the text_input
-        # if the user typed.
         pass # No need for a separate text input here
     with col2:
-        send_button = st.button("📤 Send", key="send_chat", use_container_width=True)
+        send_button = st.button("📤 Send", key="send_chat", use_container_width=True, on_click=handle_chat_send)
     
     st.subheader("⚡ Quick Prompts")
     quick_prompts = [
@@ -1112,37 +1118,38 @@ def chatbot_component():
     for i, prompt in enumerate(quick_prompts):
         with cols[i % 3]:
             # When a quick prompt button is clicked, directly update st.session_state.chat_input
-            # and rerun. The main_chat_input_widget will then render with this new value.
+            # and set the submitted flag.
             if st.button(f"💬 {prompt}", key=f"quick_{i}", use_container_width=True):
                 st.session_state.chat_input = prompt
-                st.rerun() # Rerun to update the text input box immediately
+                st.session_state.chat_submitted = True # Mark as submitted
+                st.rerun() # Rerun to trigger the chat processing logic
 
-    # Check if a message should be sent (either by clicking send or by hitting enter in the input)
-    # The `user_message` variable reflects the current state of the text_input widget.
-    # We add a check for `st.session_state.last_chat_input_processed` to avoid processing the same input multiple times on reruns
-    if (send_button or (user_message and user_message != st.session_state.last_chat_input_processed)) and user_message.strip():
-        # Add user message to history if it's new
-        if not st.session_state.chat_history or st.session_state.chat_history[-1]['content'] != user_message or st.session_state.chat_history[-1]['role'] != 'user':
-            st.session_state.chat_history.append({
-                'role': 'user',
-                'content': user_message,
-                'timestamp': datetime.now().strftime("%H:%M:%S")
-            })
-        
-        st.session_state.last_chat_input_processed = user_message # Update processed flag
+    # Process message if chat_submitted flag is True and there's valid input
+    if st.session_state.chat_submitted and st.session_state.chat_input.strip():
+        current_user_message = st.session_state.chat_input.strip()
+
+        # Reset the submitted flag immediately to prevent re-processing on subsequent reruns
+        st.session_state.chat_submitted = False 
+
+        # Add user message to history
+        st.session_state.chat_history.append({
+            'role': 'user',
+            'content': current_user_message,
+            'timestamp': datetime.now().strftime("%H:%M:%S")
+        })
         
         display_spinner_and_message("AI is thinking...")
         try:
             # Mock AI response (backend integration would go here)
             ai_responses = {
-                "Professional": f"Thank you for your question about '{user_message}'. Based on my analysis, I can provide you with a comprehensive response that addresses your inquiry professionally and thoroughly.",
-                "Friendly": f"Hey there! Great question about '{user_message}'! I'd be happy to help you with that. Let me share some insights that might be useful for you.",
-                "Technical": f"Analyzing your query '{user_message}', I can provide technical specifications and detailed implementation details relevant to your request.",
-                "Creative": f"What an interesting question about '{user_message}'! Let me explore this creatively and provide you with some imaginative perspectives and solutions.",
-                "Humorous": f"Ha! You asked about '{user_message}' - that's a great question! Let me give you an answer that's both informative and entertaining."
+                "Professional": f"Thank you for your question about '{current_user_message}'. Based on my analysis, I can provide you with a comprehensive response that addresses your inquiry professionally and thoroughly.",
+                "Friendly": f"Hey there! Great question about '{current_user_message}'! I'd be happy to help you with that. Let me share some insights that might be useful for you.",
+                "Technical": f"Analyzing your query '{current_user_message}', I can provide technical specifications and detailed implementation details relevant to your request.",
+                "Creative": f"What an interesting question about '{current_user_message}'! Let me explore this creatively and provide you with some imaginative perspectives and solutions.",
+                "Humorous": f"Ha! You asked about '{current_user_message}' - that's a great question! Let me give you an answer that's both informative and entertaining."
             }
             
-            ai_response = ai_responses.get(personality, f"I understand you're asking about '{user_message}'. Here's my response based on the available information and context.")
+            ai_response = ai_responses.get(personality, f"I understand you're asking about '{current_user_message}'. Here's my response based on the available information and context.")
             
             st.session_state.chat_history.append({
                 'role': 'assistant',
@@ -1152,14 +1159,15 @@ def chatbot_component():
             
             # Clear the input box after sending the message
             st.session_state.chat_input = "" 
-            log_to_history("Chatbot", user_message, ai_response)
+            log_to_history("Chatbot", current_user_message, ai_response)
             st.rerun() # Rerun to display the updated chat history immediately
             
         except Exception as e:
             display_error(f"Unexpected error: {e}")
-            log_to_history("Chatbot", user_message, str(e), False)
-    elif send_button and not user_message.strip(): # If button was pressed but input was empty
+            log_to_history("Chatbot", current_user_message, str(e), False)
+    elif st.session_state.chat_submitted and not st.session_state.chat_input.strip(): # If button was pressed but input was empty
         st.warning("Please type a message to send.")
+        st.session_state.chat_submitted = False # Reset flag if input was empty
 
 
 def speech_to_text_component():
@@ -1218,8 +1226,7 @@ def speech_to_text_component():
         display_spinner_and_message("Converting speech to text...")
         try:
             # Call FastAPI backend for STT
-            files = {"file": (source_filename, source_audio_data, source_mime)}
-            response = requests.post(f"{API_BASE}/stt", files=files)
+            response = requests.post(f"{API_BASE}/stt", files={"file": (source_filename, source_audio_data, source_mime)})
             response.raise_for_status()
             result = response.json()
             transcription = result.get("transcribed_text", "Could not transcribe audio.")
