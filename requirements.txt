@@ -8,3 +8,4 @@ numpy # For numerical operations with audio data
 streamlit>=1.16.0 # Ensure Streamlit version supports audio_recorder
 pydub # Required by Streamlit's audio_recorder for some functionalities
 audioread # Required by Streamlit's audio_recorder for some functionalities
+librosa # General audio processing library, often needed for STT/TTS dependencies
