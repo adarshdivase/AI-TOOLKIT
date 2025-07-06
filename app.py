@@ -113,17 +113,21 @@ st.markdown("""
     }
 
     /* Adjust color for generated text and translated text outputs for better visibility */
-    /* This targets the specific markdown divs with light backgrounds */
-    div[data-testid="stMarkdown"] > div > div[style*="background: #f8f9fa;"],
-    div[data-testid="stMarkdown"] > div > div[style*="background: #e3f2fd;"],
-    div[data-testid="stMarkdown"] > div > div[style*="background: #e8f5e8;"],
-    div[data-testid="stMarkdown"] > div > div[style*="background: #f0f8ff;"] {
+    /* This targets the specific markdown divs with light backgrounds used for results */
+    div[data-testid="stMarkdown"] > div > div[style*="background: #f8f9fa;"], /* General purpose light background, like generated text, original/translated text in translation */
+    div[data-testid="stMarkdown"] > div > div[style*="background: #e3f2fd;"], /* Image caption, user chat bubble */
+    div[data-testid="stMarkdown"] > div > div[style*="background: #e8f5e8;"], /* QA answer */
+    div[data-testid="stMarkdown"] > div > div[style*="background: #f0f8ff;"], /* STT transcription */
+    div[data-testid="stMarkdown"] > div > div[style*="background: #f3e5f5;"] /* AI chat bubble */
+    {
         color: #333333; /* Dark grey for better contrast on light backgrounds */
     }
+    
     /* Specific adjustment for sentiment analysis text within the colored box */
+    /* Keep white text for these, as their backgrounds are dark enough (green/red) */
     div[data-testid="stMarkdown"] > div > div[style*="background: green;"],
     div[data-testid="stMarkdown"] > div > div[style*="background: red;"] {
-        color: white; /* Keep white text for sentiment analysis result for consistency with gradient cards */
+        color: white;
     }
 
 </style>
@@ -198,7 +202,9 @@ def log_to_history(service: str, input_data: str, output_data: str, success: boo
 def display_spinner_and_message(message):
     """Displays a spinner and a message for better UX during processing."""
     with st.spinner(message):
-        time.sleep(0.5)  # Brief pause for UX to show spinner
+        # Removed time.sleep(0.5) to avoid artificial lag.
+        # Real processing time will depend on the API call.
+        pass 
 
 def display_error(error_message):
     """Displays an error message in a styled box."""
@@ -252,6 +258,7 @@ def sentiment_analysis_component():
         help="Upload a CSV file with a text column for batch analysis"
     )
     
+    df = None # Initialize df outside the if block
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
@@ -260,20 +267,20 @@ def sentiment_analysis_component():
                 text_column = st.selectbox("Select text column:", df.columns)
             else:
                 st.error("CSV file appears to be empty or invalid.")
-                return
+                df = None # Reset df if invalid
         except Exception as e:
             st.error(f"Error reading CSV file: {e}")
-            return
+            df = None # Reset df on error
 
     if st.button("🔍 Analyze Sentiment", key="sentiment_button", use_container_width=True):
         if not text_input.strip() and not uploaded_file:
             st.warning("Please enter text or upload a file to analyze.")
             return
 
-        if text_input.strip():
-            display_spinner_and_message("Analyzing sentiment...")
-            try:
-                # Call FastAPI backend for sentiment analysis
+        display_spinner_and_message("Analyzing sentiment...")
+        try:
+            # Handle single text input
+            if text_input.strip():
                 response = requests.post(f"{API_BASE}/sentiment/analyze", json={"text": text_input})
                 response.raise_for_status()
                 result = response.json()
@@ -316,13 +323,56 @@ def sentiment_analysis_component():
                     st.success("Saved to favorites!")
                 
                 log_to_history("Sentiment Analysis", text_input, str(result))
-                
-            except requests.exceptions.RequestException as e:
-                display_error(f"Could not analyze sentiment: {e}")
-                log_to_history("Sentiment Analysis", text_input, str(e), False)
-            except Exception as e:
-                display_error(f"An unexpected error occurred: {e}")
-                log_to_history("Sentiment Analysis", text_input, str(e), False)
+            
+            # Handle batch file upload
+            elif df is not None and text_column:
+                st.info(f"Processing batch analysis for column: **{text_column}**")
+                batch_results = []
+                # Simulate processing each row
+                progress_bar = st.progress(0)
+                for i, row_text in enumerate(df[text_column].astype(str)):
+                    if i >= 50: # Limit for demo purposes to avoid very long runs
+                        st.warning("Processing limited to first 50 rows for demonstration.")
+                        break
+                    
+                    try:
+                        response = requests.post(f"{API_BASE}/sentiment/analyze", json={"text": row_text})
+                        response.raise_for_status()
+                        result = response.json()
+                        batch_results.append({
+                            "original_text": row_text[:100] + "..." if len(row_text) > 100 else row_text,
+                            "label": result.get("label", "N/A"),
+                            "score": result.get("score", 0.0)
+                        })
+                    except requests.exceptions.RequestException as e:
+                        batch_results.append({
+                            "original_text": row_text[:100] + "..." if len(row_text) > 100 else row_text,
+                            "label": "Error",
+                            "score": 0.0,
+                            "error": str(e)
+                        })
+                    progress_bar.progress((i + 1) / min(len(df), 50))
+
+                st.subheader("📊 Batch Analysis Results (First 50 Rows)")
+                batch_df = pd.DataFrame(batch_results)
+                st.dataframe(batch_df, use_container_width=True)
+
+                csv_output = batch_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Batch Results CSV",
+                    data=csv_output,
+                    file_name="sentiment_batch_results.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+                log_to_history("Sentiment Analysis (Batch)", uploaded_file.name, f"Processed {len(batch_results)} rows.")
+
+        except requests.exceptions.RequestException as e:
+            display_error(f"Could not analyze sentiment: {e}")
+            log_to_history("Sentiment Analysis", text_input, str(e), False)
+        except Exception as e:
+            display_error(f"An unexpected error occurred: {e}")
+            log_to_history("Sentiment Analysis", text_input, str(e), False)
 
 def text_summarization_component():
     """Streamlit component for Text Summarization."""
@@ -372,7 +422,7 @@ def text_summarization_component():
                     processed_text = uploaded_doc.getvalue().decode("utf-8")
                 else:
                     st.info("PDF/DOCX processing would require additional libraries (e.g., PyPDF2, python-docx) and backend logic. Using mock text.")
-                    processed_text = "Sample text extracted from document for demonstration purposes."
+                    processed_text = "Sample text extracted from document for demonstration purposes, such as an annual report detailing the company's financial performance, market expansion strategies, and sustainability initiatives. The report also highlights key product launches and technological advancements over the past year, underscoring the commitment to innovation and customer satisfaction. Future plans involve aggressive growth in emerging markets and continued investment in research and development to maintain a competitive edge. The board expressed optimism about the company's trajectory and its ability to achieve long-term objectives despite global economic challenges."
             
             if not processed_text.strip():
                 st.warning("No text found to summarize from input or uploaded document.")
@@ -390,9 +440,9 @@ def text_summarization_component():
             st.subheader("📝 Summary")
             if bullet_points:
                 bullet_summary = "• " + summary.replace(". ", ".\n• ")
-                st.info(bullet_summary) # Use st.info for a standard, readable text block
+                st.markdown(f"<div style='background: #f8f9fa; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #667eea;'>{bullet_summary}</div>", unsafe_allow_html=True)
             else:
-                st.info(summary) # Use st.info for a standard, readable text block
+                st.markdown(f"<div style='background: #f8f9fa; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #667eea;'>{summary}</div>", unsafe_allow_html=True)
             
             if include_keywords and keywords:
                 st.subheader("🔑 Key Terms")
@@ -639,7 +689,8 @@ def image_captioning_component():
                 with col3:
                     st.metric("Processing Time", "2.3s")
                 with col4:
-                    st.metric("Image Quality", "High")
+                    relevance = "High" if 0.85 > 0.8 else "Medium" if 0.85 > 0.6 else "Low" # Mock value
+                    st.metric("Relevance", relevance)
                 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -699,21 +750,22 @@ def translation_component():
     
     with col2:
         st.subheader("Translation Settings")
-        source_lang = st.selectbox("Source Language:", [
+        source_lang_options = [
             "Auto-detect", "English", "Spanish", "French", "German", 
             "Italian", "Portuguese", "Russian", "Chinese", "Japanese", 
             "Korean", "Arabic", "Hindi", "Dutch", "Swedish"
-        ], key="translation_source", index=["Auto-detect", "English", "Spanish", "French", "German", 
-            "Italian", "Portuguese", "Russian", "Chinese", "Japanese", 
-            "Korean", "Arabic", "Hindi", "Dutch", "Swedish"].index(st.session_state.translation_source))
-        
-        target_lang = st.selectbox("Target Language:", [
+        ]
+        target_lang_options = [
             "English", "Spanish", "French", "German", "Italian", 
             "Portuguese", "Russian", "Chinese", "Japanese", "Korean", 
             "Arabic", "Hindi", "Dutch", "Swedish"
-        ], key="translation_target", index=["English", "Spanish", "French", "German", "Italian", 
-            "Portuguese", "Russian", "Chinese", "Japanese", "Korean", 
-            "Arabic", "Hindi", "Dutch", "Swedish"].index(st.session_state.translation_target))
+        ]
+
+        source_lang_idx = source_lang_options.index(st.session_state.translation_source) if st.session_state.translation_source in source_lang_options else 0
+        target_lang_idx = target_lang_options.index(st.session_state.translation_target) if st.session_state.translation_target in target_lang_options else 0
+
+        source_lang = st.selectbox("Source Language:", source_lang_options, key="translation_source", index=source_lang_idx)
+        target_lang = st.selectbox("Target Language:", target_lang_options, key="translation_target", index=target_lang_idx)
         
         formal_tone = st.checkbox("Formal tone", value=False)
         preserve_formatting = st.checkbox("Preserve formatting", value=True)
@@ -787,7 +839,11 @@ def translation_component():
                     "Arabic": "مرحبا، كيف حالك اليوم؟",
                     "Hindi": "नमस्ते, आज आप कैसे हैं?"
                 }
-                translated_text = mock_translations.get(target_lang, f"Translation to {target_lang} is not supported by the current backend or mocked. Original: {original_text_to_translate}")
+                # A very basic mock: if the target lang is in mock_translations, return its sample, else generic.
+                if target_lang in mock_translations:
+                    translated_text = mock_translations[target_lang]
+                else:
+                    translated_text = f"Translation to {target_lang} is not supported by the current backend. Original: '{original_text_to_translate[:50]}...'"
             
             st.session_state.translation_history.append({
                 'original': original_text_to_translate,
@@ -1028,7 +1084,7 @@ def chatbot_component():
             "Type your message:", 
             key="chat_input",
             placeholder="Ask me anything...",
-            value=st.session_state.chat_input
+            value=st.session_state.chat_input # This ensures the text input retains its value after rerun
         )
     with col2:
         send_button = st.button("📤 Send", key="send_chat", use_container_width=True)
@@ -1040,13 +1096,17 @@ def chatbot_component():
     ]
     
     cols = st.columns(3)
+    # Using `st.session_state.chat_input = prompt` and `st.rerun()` directly inside the button
+    # will update the text input immediately and trigger a rerun.
     for i, prompt in enumerate(quick_prompts):
         with cols[i % 3]:
             if st.button(f"💬 {prompt}", key=f"quick_{i}", use_container_width=True):
                 st.session_state.chat_input = prompt
-                st.rerun()
+                st.rerun() # Force rerun to populate the text input and trigger send logic if needed
 
+    # Only process if send_button is clicked AND user_input is not empty
     if send_button and user_input.strip():
+        # Append user message to history
         st.session_state.chat_history.append({
             'role': 'user',
             'content': user_input,
@@ -1066,15 +1126,17 @@ def chatbot_component():
             
             ai_response = ai_responses.get(personality, f"I understand you're asking about '{user_input}'. Here's my response based on the available information and context.")
             
+            # Append AI response to history
             st.session_state.chat_history.append({
                 'role': 'assistant',
                 'content': ai_response,
                 'timestamp': datetime.now().strftime("%H:%M:%S")
             })
             
-            st.session_state.chat_input = ""
+            # Clear the input box after sending the message
+            st.session_state.chat_input = "" 
             log_to_history("Chatbot", user_input, ai_response)
-            st.rerun()
+            st.rerun() # Rerun to display the updated chat history immediately
             
         except Exception as e:
             display_error(f"Unexpected error: {e}")
@@ -1204,7 +1266,7 @@ def speech_to_text_component():
                     st.success("Saved to favorites!")
             with col3:
                 if st.button("📋 Copy to Clipboard", key="copy_stt"):
-                    st.info("Transcript copied to clipboard!")
+                    st.info("Transcript copied to clipboard!") # Streamlit doesn't have direct clipboard access in browser
             
             log_to_history("Speech to Text", source_filename, transcription)
             
@@ -1452,10 +1514,14 @@ def favorites_component():
     if st.session_state.favorites:
         for i, item in enumerate(st.session_state.favorites):
             st.subheader(f"{item['type']} - {item['timestamp']}")
-            st.json(item['content'])
+            # Use st.expander for better organization of favorite content
+            with st.expander(f"View details for {item['type']} saved at {item['timestamp']}"):
+                st.json(item['content'])
+            
             if st.button(f"Remove from Favorites {i}", key=f"remove_fav_{i}"):
                 st.session_state.favorites.pop(i)
                 st.rerun()
+            st.markdown("---") # Separator
     else:
         st.info("No favorites saved yet.")
 
@@ -1554,6 +1620,7 @@ with tab_settings:
     current_api_base_input = API_BASE # Read current value for the text_input
     new_api_base_from_input = st.text_input("Backend API Base URL:", value=current_api_base_input, key="settings_api_base_input")
     
+    # Check if the API_BASE needs to be updated and force a rerun
     if new_api_base_from_input != API_BASE:
         st.warning(f"API Base URL changed from {API_BASE} to {new_api_base_from_input}. This change will apply on next rerun.")
         # Update the module-level variable directly using globals()
