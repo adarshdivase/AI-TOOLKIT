@@ -175,6 +175,9 @@ if 'chat_input' not in st.session_state: # This will hold the current text input
     st.session_state.chat_input = ""
 if 'chat_submitted' not in st.session_state: # Flag to check if send button was pressed
     st.session_state.chat_submitted = False
+# Initialize the key for the text_input widget explicitly to avoid AttributeError
+if 'main_chat_input_widget' not in st.session_state:
+    st.session_state.main_chat_input_widget = ""
 
 
 # --- Helper Functions ---
@@ -842,10 +845,10 @@ def translation_component():
                     "Portuguese": "Olá, como você está hoje?",
                     "Russian": "Привет, как дела сегодня?",
                     "Chinese": "你好，你今天好吗？",
-                    "Japanese": "こんにちは、今日はいかがですか？",
-                    "Korean": "안녕하세요, 오늘 어떻게 지내세요?",
+                    "Japanese": "こんにちは，今日はいかがですか？",
+                    "Korean": "안녕하세요，오늘 어떻게 지내세요？",
                     "Arabic": "مرحبا، كيف حالك اليوم؟",
-                    "Hindi": "नमस्ते, आज आप कैसे हैं?"
+                    "Hindi": "नमस्ते，आज आप कैसे हैं?"
                 }
                 # A very basic mock: if the target lang is in mock_translations, return its sample, else generic.
                 if target_lang in mock_translations:
@@ -937,7 +940,7 @@ def Youtubeing_component():
             "Ask your question:", 
             key="qa_question_input",
             placeholder="What would you like to know?",
-            value=st.session_state.qa_question_input
+            value=st.session_state.qa_question_input # This is correctly linked to session state
         )
     
     with col2:
@@ -970,6 +973,7 @@ def Youtubeing_component():
     for i, question in enumerate(sample_questions):
         with cols[i % 3]:
             if st.button(f"📝 {question[:20]}...", key=f"sample_q_{i}", use_container_width=True):
+                # Correct way to set a widget's value from a button
                 st.session_state.qa_question_input = question
                 st.rerun()
 
@@ -1069,6 +1073,7 @@ def chatbot_component():
         if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_button"):
             st.session_state.chat_history = []
             st.session_state.chat_input = "" # Clear the input box value
+            st.session_state.main_chat_input_widget = "" # Also clear the widget's internal value for visual reset
             st.session_state.chat_submitted = False # Reset submitted flag
             st.rerun()
     
@@ -1090,23 +1095,24 @@ def chatbot_component():
     
     # Define a callback function to handle sending the message
     def handle_chat_send():
+        # This callback captures the current value of the text_input widget
+        # and sets the flag to process the message.
+        st.session_state.chat_input = st.session_state.main_chat_input_widget
         st.session_state.chat_submitted = True
-        st.session_state.chat_input = st.session_state.main_chat_input_widget # Capture current text input value
-
+    
     # Text input for user message
-    user_message_widget = st.text_input(
+    # The `value` parameter ensures the widget displays `st.session_state.chat_input`.
+    # The `on_change` callback (if defined) ensures `handle_chat_send` runs when user types/hits Enter.
+    user_message_widget_value = st.text_input(
         "Type your message:", 
         key="main_chat_input_widget", # Unique key for this widget
         placeholder="Ask me anything...",
-        value=st.session_state.chat_input, # This widget's value is controlled by session state
-        on_change=handle_chat_send if st.session_state.chat_input != st.session_state.main_chat_input_widget else None # Trigger on_change only if text actually changed
+        value=st.session_state.chat_input, # Always controlled by session_state.chat_input
+        on_change=handle_chat_send # This will run when the user hits Enter or the widget's value changes
     )
     
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        pass # No need for a separate text input here
-    with col2:
-        send_button = st.button("📤 Send", key="send_chat", use_container_width=True, on_click=handle_chat_send)
+    # Send button, explicitly trigger handle_chat_send on click
+    st.button("📤 Send", key="send_chat", use_container_width=True, on_click=handle_chat_send)
     
     st.subheader("⚡ Quick Prompts")
     quick_prompts = [
@@ -1117,12 +1123,10 @@ def chatbot_component():
     cols = st.columns(3)
     for i, prompt in enumerate(quick_prompts):
         with cols[i % 3]:
-            # When a quick prompt button is clicked, directly update st.session_state.chat_input
-            # and set the submitted flag.
             if st.button(f"💬 {prompt}", key=f"quick_{i}", use_container_width=True):
-                st.session_state.chat_input = prompt
+                st.session_state.chat_input = prompt # Set the value that the text_input displays
                 st.session_state.chat_submitted = True # Mark as submitted
-                st.rerun() # Rerun to trigger the chat processing logic
+                st.rerun() # Force rerun to trigger the chat processing logic below
 
     # Process message if chat_submitted flag is True and there's valid input
     if st.session_state.chat_submitted and st.session_state.chat_input.strip():
@@ -1157,7 +1161,7 @@ def chatbot_component():
                 'timestamp': datetime.now().strftime("%H:%M:%S")
             })
             
-            # Clear the input box after sending the message
+            # Clear the input box's value in session state after processing
             st.session_state.chat_input = "" 
             log_to_history("Chatbot", current_user_message, ai_response)
             st.rerun() # Rerun to display the updated chat history immediately
@@ -1556,6 +1560,81 @@ def favorites_component():
     else:
         st.info("No favorites saved yet.")
 
+def Youtubeing_component():
+    """Placeholder for Youtube Analysis/Processing component."""
+    st.header("▶️ YouTube Content Analysis")
+    st.write("Extract insights, summaries, or answer questions from YouTube videos.")
+
+    youtube_url = st.text_input("Enter YouTube Video URL:", placeholder="e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ", key="youtube_url_input")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        analysis_type = st.selectbox("Select Analysis Type:", ["Summarize Video", "Q&A on Video", "Transcribe Video"], key="youtube_analysis_type")
+    with col2:
+        if analysis_type == "Q&A on Video":
+            youtube_question = st.text_input("Question about the video:", placeholder="What is the main topic?", key="youtube_qa_question")
+            
+    if st.button("🚀 Analyze YouTube Video", key="analyze_youtube_button", use_container_width=True):
+        if not youtube_url.strip():
+            st.warning("Please enter a YouTube URL.")
+            return
+        
+        display_spinner_and_message(f"Analyzing video for {analysis_type}...")
+        try:
+            # Mock API call for YouTube analysis - replace with actual backend call
+            # Your backend would need libraries like youtube-dlp, pytube, whisper, etc.
+            if analysis_type == "Summarize Video":
+                mock_result = {"summary": "This video discusses the advancements in AI technology, focusing on large language models and their impact on various industries. It highlights the ethical considerations and future potential of AI in daily life."}
+                output_display = f"**Summary:** {mock_result['summary']}"
+                log_to_history("YouTube Summarization", youtube_url, mock_result['summary'])
+            elif analysis_type == "Q&A on Video":
+                if not youtube_question.strip():
+                    st.warning("Please enter a question for Q&A.")
+                    return
+                mock_result = {"answer": f"Regarding your question '{youtube_question}', the video explains that AI models are becoming more sophisticated, enabling natural language understanding and generation, which can be applied in customer service, content creation, and data analysis."}
+                output_display = f"**Question:** {youtube_question}\n\n**Answer:** {mock_result['answer']}"
+                log_to_history("YouTube Q&A", f"{youtube_url} | Q: {youtube_question}", mock_result['answer'])
+            elif analysis_type == "Transcribe Video":
+                mock_result = {"transcription": "Hello, this is a sample transcription of a YouTube video. Artificial intelligence is rapidly evolving, bringing new capabilities to the forefront. We are seeing major breakthroughs in natural language processing and computer vision."}
+                output_display = f"**Transcription:**\n\n```\n{mock_result['transcription']}\n```"
+                log_to_history("YouTube Transcription", youtube_url, mock_result['transcription'])
+            
+            st.subheader(f"📊 {analysis_type} Results")
+            st.markdown(f"<div style='background: #f8f9fa; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #764ba2;'>{output_display}</div>", unsafe_allow_html=True)
+            display_success(f"{analysis_type} completed successfully!")
+
+            if st.button("⭐ Save to Favorites", key="save_youtube_analysis"):
+                add_to_favorites(f"YouTube {analysis_type}", {
+                    'url': youtube_url,
+                    'result': mock_result
+                })
+                st.success("Saved to favorites!")
+
+        except requests.exceptions.RequestException as e:
+            display_error(f"Could not analyze YouTube video: {e}")
+            log_to_history(f"YouTube {analysis_type}", youtube_url, str(e), False)
+        except Exception as e:
+            display_error(f"An unexpected error occurred: {e}")
+            log_to_history(f"YouTube {analysis_type}", youtube_url, str(e), False)
+
+    # Example of how Youtubeing_component might interact with QA component
+    st.subheader("🔗 Ask a question in Question Answering Tab based on this video")
+    yt_qa_sample_questions = [
+        "What is the main topic of the video?",
+        "Who is the speaker?",
+        "What are the key takeaways?",
+        "How long is the video?"
+    ]
+    cols = st.columns(2)
+    for i, question in enumerate(yt_qa_sample_questions):
+        with cols[i % 2]:
+            if st.button(f"❓ {question[:30]}...", key=f"yt_qa_q_{i}", use_container_width=True):
+                # Correct way to update another component's input:
+                # Set the session state variable that the target widget uses as its value
+                st.session_state.qa_question_input = question
+                st.rerun() # Force a rerun so the QA component picks up the new value
+
+
 # --- Main Application Layout ---
 
 st.sidebar.title("🛠️ AI Services Toolkit Pro")
@@ -1576,10 +1655,10 @@ else:
 st.markdown('<div class="main-header"><h1>🤖 AI Services Toolkit Pro Dashboard</h1></div>', unsafe_allow_html=True)
 
 # Use st.tabs for navigation
-tab_sentiment, tab_summarization, tab_generation, tab_captioning, tab_translation, tab_tts, tab_stt, tab_qa, tab_chatbot, tab_history, tab_favorites, tab_settings = st.tabs([
+tab_sentiment, tab_summarization, tab_generation, tab_captioning, tab_translation, tab_tts, tab_stt, tab_qa, tab_chatbot, tab_youtube, tab_history, tab_favorites, tab_settings = st.tabs([
     "Sentiment Analysis", "Text Summarization", "Text Generation",
     "Image Analysis", "Translation", "Text-to-Speech", "Speech-to-Text",
-    "Question Answering", "AI Chatbot", "History", "Favorites", "Settings"
+    "Question Answering", "AI Chatbot", "YouTube Analysis", "History", "Favorites", "Settings"
 ])
 
 # Render components in their respective tabs
@@ -1609,6 +1688,9 @@ with tab_qa:
 
 with tab_chatbot:
     chatbot_component()
+
+with tab_youtube: # Added new tab for Youtubeing_component
+    Youtubeing_component()
 
 with tab_history:
     history_and_analytics_component()
