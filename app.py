@@ -112,22 +112,21 @@ st.markdown("""
         margin-bottom: 1rem;
     }
 
-    /* Adjust color for generated text and translated text outputs for better visibility */
-    /* This targets the specific markdown divs with light backgrounds used for results */
-    div[data-testid="stMarkdown"] > div > div[style*="background: #f8f9fa;"], /* General purpose light background, like generated text, original/translated text in translation */
-    div[data-testid="stMarkdown"] > div > div[style*="background: #e3f2fd;"], /* Image caption, user chat bubble */
-    div[data-testid="stMarkdown"] > div > div[style*="background: #e8f5e8;"], /* QA answer */
-    div[data-testid="stMarkdown"] > div > div[style*="background: #f0f8ff;"], /* STT transcription */
-    div[data-testid="stMarkdown"] > div > div[style*="background: #f3e5f5;"] /* AI chat bubble */
-    {
-        color: #333333; /* Dark grey for better contrast on light backgrounds */
+    /* Force dark text for readability within specific light-colored output divs */
+    /* This targets the <p> and <strong> tags within the custom-styled divs */
+    div[data-testid="stMarkdown"] div[style*="background"] p,
+    div[data-testid="stMarkdown"] div[style*="background"] strong,
+    div[data-testid="stMarkdown"] div[style*="background"] h4,
+    div[data-testid="stMarkdown"] div[style*="background"] h5 {
+        color: #333333 !important; /* Dark grey with !important to override inline styles */
     }
-    
-    /* Specific adjustment for sentiment analysis text within the colored box */
-    /* Keep white text for these, as their backgrounds are dark enough (green/red) */
-    div[data-testid="stMarkdown"] > div > div[style*="background: green;"],
-    div[data-testid="stMarkdown"] > div > div[style*="background: red;"] {
-        color: white;
+
+    /* Exception: Keep sentiment analysis large label text white for strong contrast */
+    div[data-testid="stMarkdown"] div[style*="background: green;"] h3,
+    div[data-testid="stMarkdown"] div[style*="background: red;"] h3,
+    div[data-testid="stMarkdown"] div[style*="background: green;"] p,
+    div[data-testid="stMarkdown"] div[style*="background: red;"] p {
+        color: white !important;
     }
 
 </style>
@@ -1060,11 +1059,13 @@ def chatbot_component():
         
         if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_button"):
             st.session_state.chat_history = []
+            st.session_state.chat_input = "" # Clear the input box too
             st.rerun()
     
     with col1:
         st.subheader("💬 Chat History")
-        chat_container = st.container(height=400) # Fixed height for chat history
+        # Use a container for chat history, and scroll to bottom
+        chat_container = st.container(height=400) 
         
         with chat_container:
             if st.session_state.chat_history:
@@ -1080,11 +1081,17 @@ def chatbot_component():
     
     col1, col2 = st.columns([4, 1])
     with col1:
+        # Use a callback to update session state when text input changes
+        def update_chat_input():
+            st.session_state.chat_input = st.session_state._temp_chat_input
+
+        user_input_key = "_temp_chat_input"
         user_input = st.text_input(
             "Type your message:", 
-            key="chat_input",
+            key=user_input_key, # Link to a temporary session state key
             placeholder="Ask me anything...",
-            value=st.session_state.chat_input # This ensures the text input retains its value after rerun
+            value=st.session_state.chat_input, # Display current state value
+            on_change=update_chat_input # Update actual chat_input on change
         )
     with col2:
         send_button = st.button("📤 Send", key="send_chat", use_container_width=True)
@@ -1096,51 +1103,60 @@ def chatbot_component():
     ]
     
     cols = st.columns(3)
-    # Using `st.session_state.chat_input = prompt` and `st.rerun()` directly inside the button
-    # will update the text input immediately and trigger a rerun.
     for i, prompt in enumerate(quick_prompts):
         with cols[i % 3]:
             if st.button(f"💬 {prompt}", key=f"quick_{i}", use_container_width=True):
-                st.session_state.chat_input = prompt
-                st.rerun() # Force rerun to populate the text input and trigger send logic if needed
+                st.session_state.chat_input = prompt # Set the chat_input value
+                st.session_state._temp_chat_input = prompt # Also set the temp input for visual consistency
+                st.rerun() # Force rerun to populate the text input and potentially trigger send logic if user presses enter
 
-    # Only process if send_button is clicked AND user_input is not empty
-    if send_button and user_input.strip():
-        # Append user message to history
-        st.session_state.chat_history.append({
-            'role': 'user',
-            'content': user_input,
-            'timestamp': datetime.now().strftime("%H:%M:%S")
-        })
-        
-        display_spinner_and_message("AI is thinking...")
-        try:
-            # Mock AI response (backend integration would go here)
-            ai_responses = {
-                "Professional": f"Thank you for your question about '{user_input}'. Based on my analysis, I can provide you with a comprehensive response that addresses your inquiry professionally and thoroughly.",
-                "Friendly": f"Hey there! Great question about '{user_input}'! I'd be happy to help you with that. Let me share some insights that might be useful for you.",
-                "Technical": f"Analyzing your query '{user_input}', I can provide technical specifications and detailed implementation details relevant to your request.",
-                "Creative": f"What an interesting question about '{user_input}'! Let me explore this creatively and provide you with some imaginative perspectives and solutions.",
-                "Humorous": f"Ha! You asked about '{user_input}' - that's a great question! Let me give you an answer that's both informative and entertaining."
-            }
+    # Process message if send button is clicked OR if enter is pressed in the text input
+    # Note: Streamlit's text_input triggers a rerun on enter key press if there's no `on_change`
+    # and no button. With `on_change` and a button, it's more nuanced. 
+    # We rely on the button click or the state being updated and rerun manually.
+    if send_button or (user_input and st.session_state.get('last_chat_input_sent') != user_input):
+        if user_input.strip():
+            # Avoid duplicate messages if rerunning from some other widget interaction
+            if not st.session_state.chat_history or st.session_state.chat_history[-1]['content'] != user_input or st.session_state.chat_history[-1]['role'] != 'user':
+                st.session_state.chat_history.append({
+                    'role': 'user',
+                    'content': user_input,
+                    'timestamp': datetime.now().strftime("%H:%M:%S")
+                })
             
-            ai_response = ai_responses.get(personality, f"I understand you're asking about '{user_input}'. Here's my response based on the available information and context.")
+            st.session_state.last_chat_input_sent = user_input # Mark this input as processed
             
-            # Append AI response to history
-            st.session_state.chat_history.append({
-                'role': 'assistant',
-                'content': ai_response,
-                'timestamp': datetime.now().strftime("%H:%M:%S")
-            })
-            
-            # Clear the input box after sending the message
-            st.session_state.chat_input = "" 
-            log_to_history("Chatbot", user_input, ai_response)
-            st.rerun() # Rerun to display the updated chat history immediately
-            
-        except Exception as e:
-            display_error(f"Unexpected error: {e}")
-            log_to_history("Chatbot", user_input, str(e), False)
+            display_spinner_and_message("AI is thinking...")
+            try:
+                # Mock AI response (backend integration would go here)
+                ai_responses = {
+                    "Professional": f"Thank you for your question about '{user_input}'. Based on my analysis, I can provide you with a comprehensive response that addresses your inquiry professionally and thoroughly.",
+                    "Friendly": f"Hey there! Great question about '{user_input}'! I'd be happy to help you with that. Let me share some insights that might be useful for you.",
+                    "Technical": f"Analyzing your query '{user_input}', I can provide technical specifications and detailed implementation details relevant to your request.",
+                    "Creative": f"What an interesting question about '{user_input}'! Let me explore this creatively and provide you with some imaginative perspectives and solutions.",
+                    "Humorous": f"Ha! You asked about '{user_input}' - that's a great question! Let me give you an answer that's both informative and entertaining."
+                }
+                
+                ai_response = ai_responses.get(personality, f"I understand you're asking about '{user_input}'. Here's my response based on the available information and context.")
+                
+                st.session_state.chat_history.append({
+                    'role': 'assistant',
+                    'content': ai_response,
+                    'timestamp': datetime.now().strftime("%H:%M:%S")
+                })
+                
+                # Clear the input box after sending the message
+                st.session_state.chat_input = "" 
+                st.session_state._temp_chat_input = "" # Clear temp input as well
+                log_to_history("Chatbot", user_input, ai_response)
+                st.rerun() # Rerun to display the updated chat history immediately
+                
+            except Exception as e:
+                display_error(f"Unexpected error: {e}")
+                log_to_history("Chatbot", user_input, str(e), False)
+        elif send_button: # If button was pressed but input was empty
+            st.warning("Please type a message to send.")
+
 
 def speech_to_text_component():
     """Streamlit component for Speech-to-Text."""
@@ -1513,15 +1529,13 @@ def favorites_component():
 
     if st.session_state.favorites:
         for i, item in enumerate(st.session_state.favorites):
-            st.subheader(f"{item['type']} - {item['timestamp']}")
-            # Use st.expander for better organization of favorite content
-            with st.expander(f"View details for {item['type']} saved at {item['timestamp']}"):
+            # Using an expander for each favorite item to keep the page clean
+            with st.expander(f"**{item['type']}** saved on {item['timestamp']}"):
                 st.json(item['content'])
-            
-            if st.button(f"Remove from Favorites {i}", key=f"remove_fav_{i}"):
-                st.session_state.favorites.pop(i)
-                st.rerun()
-            st.markdown("---") # Separator
+                if st.button(f"Remove this {item['type']} from Favorites", key=f"remove_fav_{i}"):
+                    st.session_state.favorites.pop(i)
+                    st.rerun()
+            st.markdown("---") # Add a separator after each favorite item
     else:
         st.info("No favorites saved yet.")
 
