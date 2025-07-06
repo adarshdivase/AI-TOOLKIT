@@ -352,6 +352,7 @@ def text_summarization_component():
             if uploaded_doc and not text_input.strip():
                 if uploaded_doc.type == "text/plain":
                     processed_text = uploaded_doc.getvalue().decode("utf-8")
+                    # No longer need to reset file pointer here, as getvalue() reads entire content
                 else:
                     st.info("PDF/DOCX processing would require additional libraries (e.g., PyPDF2, python-docx) and backend logic. Using mock text.")
                     processed_text = "Sample text extracted from document for demonstration purposes."
@@ -557,7 +558,6 @@ def image_captioning_component():
         st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
         
         file_size = len(uploaded_file.read()) / 1024
-        st.info(f"📄 File: {uploaded_file.name} | Size: {file_size:.1f} KB | Type: {uploaded_file.type}")
         uploaded_file.seek(0)
         
         if st.button("🔍 Analyze Image", key="captioning_button", use_container_width=True):
@@ -663,87 +663,87 @@ Faces: {faces if faces is not None else 'Not analyzed'}
                     display_error(f"An unexpected error occurred: {e}")
                     log_to_history("Image Analysis", uploaded_file.name, str(e), False)
 
-    def translation_component():
-        """Streamlit component for Language Translation."""
-        st.header("🌍 Language Translation")
-        st.write("Translate text between multiple languages with high accuracy.")
+def translation_component():
+    """Streamlit component for Language Translation."""
+    st.header("🌍 Language Translation")
+    st.write("Translate text between multiple languages with high accuracy.")
 
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            text_input = st.text_area(
-                "Enter text to translate:", 
-                height=200, 
-                key="translation_text_input",
-                placeholder="Enter text in any language...",
-                value=st.session_state.translation_text_input # Use session state for persistence
-            )
-        
-        with col2:
-            st.subheader("Translation Settings")
-            source_lang = st.selectbox("Source Language:", [
-                "Auto-detect", "English", "Spanish", "French", "German", 
-                "Italian", "Portuguese", "Russian", "Chinese", "Japanese", 
-                "Korean", "Arabic", "Hindi", "Dutch", "Swedish"
-            ], key="translation_source", index=["Auto-detect", "English", "Spanish", "French", "German", 
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        text_input = st.text_area(
+            "Enter text to translate:", 
+            height=200, 
+            key="translation_text_input",
+            placeholder="Enter text in any language...",
+            value=st.session_state.translation_text_input # Use session state for persistence
+        )
+    
+    with col2:
+        st.subheader("Translation Settings")
+        source_lang = st.selectbox("Source Language:", [
+            "Auto-detect", "English", "Spanish", "French", "German", 
+            "Italian", "Portuguese", "Russian", "Chinese", "Japanese", 
+            "Korean", "Arabic", "Hindi", "Dutch", "Swedish"
+        ], key="translation_source", index=["Auto-detect", "English", "Spanish", "French", "German", 
                 "Italian", "Portuguese", "Russian", "Chinese", "Japanese", 
                 "Korean", "Arabic", "Hindi", "Dutch", "Swedish"].index(st.session_state.translation_source))
             
-            target_lang = st.selectbox("Target Language:", [
-                "English", "Spanish", "French", "German", "Italian", 
-                "Portuguese", "Russian", "Chinese", "Japanese", "Korean", 
-                "Arabic", "Hindi", "Dutch", "Swedish"
-            ], key="translation_target", index=["English", "Spanish", "French", "German", "Italian", 
+        target_lang = st.selectbox("Target Language:", [
+            "English", "Spanish", "French", "German", "Italian", 
+            "Portuguese", "Russian", "Chinese", "Japanese", "Korean", 
+            "Arabic", "Hindi", "Dutch", "Swedish"
+        ], key="translation_target", index=["English", "Spanish", "French", "German", "Italian", 
                 "Portuguese", "Russian", "Chinese", "Japanese", "Korean", 
                 "Arabic", "Hindi", "Dutch", "Swedish"].index(st.session_state.translation_target))
             
-            formal_tone = st.checkbox("Formal tone", value=False)
-            preserve_formatting = st.checkbox("Preserve formatting", value=True)
+        formal_tone = st.checkbox("Formal tone", value=False)
+        preserve_formatting = st.checkbox("Preserve formatting", value=True)
         
-        st.subheader("🔄 Quick Translations")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("🇺🇸 → 🇪🇸 EN to ES", use_container_width=True):
-                st.session_state.translation_source = "English"
-                st.session_state.translation_target = "Spanish"
-                st.session_state.translation_text_input = "Hello, how are you today?"
-                st.rerun()
-        with col2:
-            if st.button("🇪� → 🇺🇸 ES to EN", use_container_width=True):
-                st.session_state.translation_source = "Spanish"
-                st.session_state.translation_target = "English"
-                st.session_state.translation_text_input = "Hola, ¿cómo estás hoy?"
-                st.rerun()
-        with col3:
-            if st.button("🇺🇸 → 🇫🇷 EN to FR", use_container_width=True):
-                st.session_state.translation_source = "English"
-                st.session_state.translation_target = "French"
-                st.session_state.translation_text_input = "Hello, how are you today?"
-                st.rerun()
-        
-        st.subheader("📊 Batch Translation")
-        uploaded_file = st.file_uploader(
-            "Upload file for batch translation", 
-            type=['txt', 'csv'],
-            help="Upload TXT or CSV file for batch translation"
-        )
-        
-        if st.button("🔄 Translate", key="translation_button", use_container_width=True):
-            if not text_input.strip() and not uploaded_file:
-                st.warning("Please enter text or upload a file to translate.")
-                return
+    st.subheader("🔄 Quick Translations")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("🇺🇸 → 🇪🇸 EN to ES", use_container_width=True):
+            st.session_state.translation_source = "English"
+            st.session_state.translation_target = "Spanish"
+            st.session_state.translation_text_input = "Hello, how are you today?"
+            st.rerun()
+    with col2:
+        if st.button("🇪🇸 → 🇺🇸 ES to EN", use_container_width=True):
+            st.session_state.translation_source = "Spanish"
+            st.session_state.translation_target = "English"
+            st.session_state.translation_text_input = "Hola, ¿cómo estás hoy?"
+            st.rerun()
+    with col3:
+        if st.button("🇺🇸 → 🇫🇷 EN to FR", use_container_width=True):
+            st.session_state.translation_source = "English"
+            st.session_state.translation_target = "French"
+            st.session_state.translation_text_input = "Hello, how are you today?"
+            st.rerun()
+    
+    st.subheader("📊 Batch Translation")
+    uploaded_file = st.file_uploader(
+        "Upload file for batch translation", 
+        type=['txt', 'csv'],
+        help="Upload TXT or CSV file for batch translation"
+    )
+    
+    if st.button("🔄 Translate", key="translation_button", use_container_width=True):
+        if not text_input.strip() and not uploaded_file:
+            st.warning("Please enter text or upload a file to translate.")
+            return
 
-            display_spinner_and_message("Translating text...")
-            try:
-                original_text_to_translate = text_input
-                if uploaded_file:
-                    if uploaded_file.type == "text/plain":
-                        original_text_to_translate = uploaded_file.getvalue().decode("utf-8")
-                    elif uploaded_file.type == "text/csv":
-                        df_to_translate = pd.read_csv(uploaded_file)
-                        # For simplicity, assume first column is text to translate
-                        original_text_to_translate = "\n".join(df_to_translate.iloc[:, 0].astype(str).tolist())
-                    st.info(f"Translating content from {uploaded_file.name}...")
+        display_spinner_and_message("Translating text...")
+        try:
+            original_text_to_translate = text_input
+            if uploaded_file:
+                if uploaded_file.type == "text/plain":
+                    original_text_to_translate = uploaded_file.getvalue().decode("utf-8")
+                elif uploaded_file.type == "text/csv":
+                    df_to_translate = pd.read_csv(uploaded_file)
+                    # For simplicity, assume first column is text to translate
+                    original_text_to_translate = "\n".join(df_to_translate.iloc[:, 0].astype(str).tolist())
+                st.info(f"Translating content from {uploaded_file.name}...")
 
                 # Call FastAPI backend for translation
                 # Note: The backend currently only supports EN to FR. For other languages,
@@ -764,10 +764,10 @@ Faces: {faces if faces is not None else 'Not analyzed'}
                         "Portuguese": "Olá, como você está hoje?",
                         "Russian": "Привет, как дела сегодня?",
                         "Chinese": "你好，你今天好吗？",
-                        "Japanese": "こんにちは、今日はいかがですか？",
-                        "Korean": "안녕하세요, 오늘 어떻게 지내세요?",
+                        "Japanese": "こんにちは，今日はいかがですか？",
+                        "Korean": "안녕하세요，오늘 어떻게 지내세요？",
                         "Arabic": "مرحبا، كيف حالك اليوم؟",
-                        "Hindi": "नमस्ते, आज आप कैसे हैं?"
+                        "Hindi": "नमस्ते，आज आप कैसे हैं？"
                     }
                     translated_text = mock_translations.get(target_lang, f"Translation to {target_lang} is not supported by the current backend or mocked. Original: {original_text_to_translate}")
                 
@@ -1554,4 +1554,3 @@ Sources: {', '.join(sources) if sources else 'None'}
 
     st.markdown("---")
     st.markdown("Developed with FastAPI and Streamlit.")
-�
