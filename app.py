@@ -164,8 +164,11 @@ if 'qa_context_input' not in st.session_state:
     st.session_state.qa_context_input = ""
 if 'qa_question_input' not in st.session_state:
     st.session_state.qa_question_input = ""
+# Corrected chat_input initialization for proper use with text_input value
 if 'chat_input' not in st.session_state:
     st.session_state.chat_input = ""
+if 'last_chat_input_processed' not in st.session_state: # To prevent duplicate submissions on rerun
+    st.session_state.last_chat_input_processed = ""
 
 
 # --- Helper Functions ---
@@ -1059,40 +1062,43 @@ def chatbot_component():
         
         if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_button"):
             st.session_state.chat_history = []
-            st.session_state.chat_input = "" # Clear the input box too
+            st.session_state.chat_input = "" # Clear the input box value
+            st.session_state.last_chat_input_processed = "" # Reset processed flag
             st.rerun()
     
     with col1:
         st.subheader("💬 Chat History")
-        # Use a container for chat history, and scroll to bottom
+        # Use a container for chat history, and ideally ensure it scrolls to bottom
         chat_container = st.container(height=400) 
         
         with chat_container:
-            if st.session_state.chat_history:
-                for i, message in enumerate(st.session_state.chat_history):
-                    if message['role'] == 'user':
-                        st.markdown(f"<div style='background: #e3f2fd; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-left: 2rem;'>"
-                                     f"<strong>🙋 You:</strong> {message['content']}</div>", unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"<div style='background: #f3e5f5; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-right: 2rem;'>"
-                                     f"<strong>🤖 AI:</strong> {message['content']}</div>", unsafe_allow_html=True)
-            else:
+            for i, message in enumerate(st.session_state.chat_history):
+                if message['role'] == 'user':
+                    st.markdown(f"<div style='background: #e3f2fd; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-left: 2rem;'>"
+                                 f"<strong>🙋 You:</strong> {message['content']}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='background: #f3e5f5; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-right: 2rem;'>"
+                                 f"<strong>🤖 AI:</strong> {message['content']}</div>", unsafe_allow_html=True)
+            if not st.session_state.chat_history:
                 st.info("👋 Start a conversation! Type your message below.")
+    
+    # Text input for user message
+    # We use a distinct key and update st.session_state.chat_input via on_change
+    # This allows quick prompts to modify st.session_state.chat_input without conflict.
+    user_message = st.text_input(
+        "Type your message:", 
+        key="main_chat_input_widget", # Unique key for this widget
+        placeholder="Ask me anything...",
+        value=st.session_state.chat_input, # This widget's value is controlled by session state
+        on_change=lambda: st.session_state.update(chat_input=st.session_state.main_chat_input_widget)
+        # ^ This callback ensures st.session_state.chat_input is updated when user types
+    )
     
     col1, col2 = st.columns([4, 1])
     with col1:
-        # Use a callback to update session state when text input changes
-        def update_chat_input():
-            st.session_state.chat_input = st.session_state._temp_chat_input
-
-        user_input_key = "_temp_chat_input"
-        user_input = st.text_input(
-            "Type your message:", 
-            key=user_input_key, # Link to a temporary session state key
-            placeholder="Ask me anything...",
-            value=st.session_state.chat_input, # Display current state value
-            on_change=update_chat_input # Update actual chat_input on change
-        )
+        # The user_message variable now holds the most up-to-date value from the text_input
+        # if the user typed.
+        pass # No need for a separate text input here
     with col2:
         send_button = st.button("📤 Send", key="send_chat", use_container_width=True)
     
@@ -1105,57 +1111,55 @@ def chatbot_component():
     cols = st.columns(3)
     for i, prompt in enumerate(quick_prompts):
         with cols[i % 3]:
+            # When a quick prompt button is clicked, directly update st.session_state.chat_input
+            # and rerun. The main_chat_input_widget will then render with this new value.
             if st.button(f"💬 {prompt}", key=f"quick_{i}", use_container_width=True):
-                st.session_state.chat_input = prompt # Set the chat_input value
-                st.session_state._temp_chat_input = prompt # Also set the temp input for visual consistency
-                st.rerun() # Force rerun to populate the text input and potentially trigger send logic if user presses enter
+                st.session_state.chat_input = prompt
+                st.rerun() # Rerun to update the text input box immediately
 
-    # Process message if send button is clicked OR if enter is pressed in the text input
-    # Note: Streamlit's text_input triggers a rerun on enter key press if there's no `on_change`
-    # and no button. With `on_change` and a button, it's more nuanced. 
-    # We rely on the button click or the state being updated and rerun manually.
-    if send_button or (user_input and st.session_state.get('last_chat_input_sent') != user_input):
-        if user_input.strip():
-            # Avoid duplicate messages if rerunning from some other widget interaction
-            if not st.session_state.chat_history or st.session_state.chat_history[-1]['content'] != user_input or st.session_state.chat_history[-1]['role'] != 'user':
-                st.session_state.chat_history.append({
-                    'role': 'user',
-                    'content': user_input,
-                    'timestamp': datetime.now().strftime("%H:%M:%S")
-                })
+    # Check if a message should be sent (either by clicking send or by hitting enter in the input)
+    # The `user_message` variable reflects the current state of the text_input widget.
+    # We add a check for `st.session_state.last_chat_input_processed` to avoid processing the same input multiple times on reruns
+    if (send_button or (user_message and user_message != st.session_state.last_chat_input_processed)) and user_message.strip():
+        # Add user message to history if it's new
+        if not st.session_state.chat_history or st.session_state.chat_history[-1]['content'] != user_message or st.session_state.chat_history[-1]['role'] != 'user':
+            st.session_state.chat_history.append({
+                'role': 'user',
+                'content': user_message,
+                'timestamp': datetime.now().strftime("%H:%M:%S")
+            })
+        
+        st.session_state.last_chat_input_processed = user_message # Update processed flag
+        
+        display_spinner_and_message("AI is thinking...")
+        try:
+            # Mock AI response (backend integration would go here)
+            ai_responses = {
+                "Professional": f"Thank you for your question about '{user_message}'. Based on my analysis, I can provide you with a comprehensive response that addresses your inquiry professionally and thoroughly.",
+                "Friendly": f"Hey there! Great question about '{user_message}'! I'd be happy to help you with that. Let me share some insights that might be useful for you.",
+                "Technical": f"Analyzing your query '{user_message}', I can provide technical specifications and detailed implementation details relevant to your request.",
+                "Creative": f"What an interesting question about '{user_message}'! Let me explore this creatively and provide you with some imaginative perspectives and solutions.",
+                "Humorous": f"Ha! You asked about '{user_message}' - that's a great question! Let me give you an answer that's both informative and entertaining."
+            }
             
-            st.session_state.last_chat_input_sent = user_input # Mark this input as processed
+            ai_response = ai_responses.get(personality, f"I understand you're asking about '{user_message}'. Here's my response based on the available information and context.")
             
-            display_spinner_and_message("AI is thinking...")
-            try:
-                # Mock AI response (backend integration would go here)
-                ai_responses = {
-                    "Professional": f"Thank you for your question about '{user_input}'. Based on my analysis, I can provide you with a comprehensive response that addresses your inquiry professionally and thoroughly.",
-                    "Friendly": f"Hey there! Great question about '{user_input}'! I'd be happy to help you with that. Let me share some insights that might be useful for you.",
-                    "Technical": f"Analyzing your query '{user_input}', I can provide technical specifications and detailed implementation details relevant to your request.",
-                    "Creative": f"What an interesting question about '{user_input}'! Let me explore this creatively and provide you with some imaginative perspectives and solutions.",
-                    "Humorous": f"Ha! You asked about '{user_input}' - that's a great question! Let me give you an answer that's both informative and entertaining."
-                }
-                
-                ai_response = ai_responses.get(personality, f"I understand you're asking about '{user_input}'. Here's my response based on the available information and context.")
-                
-                st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': ai_response,
-                    'timestamp': datetime.now().strftime("%H:%M:%S")
-                })
-                
-                # Clear the input box after sending the message
-                st.session_state.chat_input = "" 
-                st.session_state._temp_chat_input = "" # Clear temp input as well
-                log_to_history("Chatbot", user_input, ai_response)
-                st.rerun() # Rerun to display the updated chat history immediately
-                
-            except Exception as e:
-                display_error(f"Unexpected error: {e}")
-                log_to_history("Chatbot", user_input, str(e), False)
-        elif send_button: # If button was pressed but input was empty
-            st.warning("Please type a message to send.")
+            st.session_state.chat_history.append({
+                'role': 'assistant',
+                'content': ai_response,
+                'timestamp': datetime.now().strftime("%H:%M:%S")
+            })
+            
+            # Clear the input box after sending the message
+            st.session_state.chat_input = "" 
+            log_to_history("Chatbot", user_message, ai_response)
+            st.rerun() # Rerun to display the updated chat history immediately
+            
+        except Exception as e:
+            display_error(f"Unexpected error: {e}")
+            log_to_history("Chatbot", user_message, str(e), False)
+    elif send_button and not user_message.strip(): # If button was pressed but input was empty
+        st.warning("Please type a message to send.")
 
 
 def speech_to_text_component():
@@ -1531,7 +1535,13 @@ def favorites_component():
         for i, item in enumerate(st.session_state.favorites):
             # Using an expander for each favorite item to keep the page clean
             with st.expander(f"**{item['type']}** saved on {item['timestamp']}"):
+                # Using a combination of markdown and st.json for better readability
+                st.markdown(f"**Type:** {item['type']}")
+                st.markdown(f"**Timestamp:** {item['timestamp']}")
+                st.markdown("---")
+                st.write("**Content:**")
                 st.json(item['content'])
+                
                 if st.button(f"Remove this {item['type']} from Favorites", key=f"remove_fav_{i}"):
                     st.session_state.favorites.pop(i)
                     st.rerun()
