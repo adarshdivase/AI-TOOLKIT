@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+transformers
+torch # Or tensorflow, depending on your transformers backend (torch is commonly used)
+Pillow
+soundfile # For handling WAV audio files in backend
+numpy # For numerical operations with audio data
+streamlit
+requests
