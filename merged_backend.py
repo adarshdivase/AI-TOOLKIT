@@ -260,6 +260,13 @@ def answer_question(payload: QuestionAnsweringIn):
 
 app.include_router(api_router, prefix="/api")
 
+@app.get("/status")
+def get_status():
+    """
+    Returns the loading status of the AI models. This is used by the frontend to check if the backend is ready.
+    """
+    return {"models_loaded": MODELS_LOADED}
+
 @app.get("/")
 def root():
     """
