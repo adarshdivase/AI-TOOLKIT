@@ -17,8 +17,7 @@ import numpy as np
 # --- Configuration ---
 # IMPORTANT: For deployment, change this to your deployed FastAPI backend URL
 # Example: API_BASE = "https://your-backend-url.onrender.com/api"
-# In app.py
-API_BASE = "https://adarshdivase-ai-toolkit-backend.hf.space/api"
+API_BASE = "https://huggingface.co/spaces/adarshdivase/ai-toolkit-backend"
 
 st.set_page_config(
     page_title="AI Services Toolkit Pro",
@@ -111,29 +110,6 @@ st.markdown("""
         border: 1px solid #e9ecef;
         margin-bottom: 1rem;
     }
-
-    /* Force dark text for readability within specific light-colored output divs */
-    /* This targets any p, strong, h4, h5 tags directly within the custom-styled divs */
-    div[data-testid="stMarkdown"] div[style*="background"] p,
-    div[data-testid="stMarkdown"] div[style*="background"] strong,
-    div[data-testid="stMarkdown"] div[style*="background"] h4,
-    div[data-testid="stMarkdown"] div[style*="background"] h5 {
-        color: #333333 !important; /* Dark grey with !important to override inline styles */
-    }
-
-    /* Exception: Keep sentiment analysis large label text white for strong contrast */
-    div[data-testid="stMarkdown"] div[style*="background: green;"] h3,
-    div[data-testid="stMarkdown"] div[style*="background: red;"] h3,
-    div[data-testid="stMarkdown"] div[style*="background: green;"] p,
-    div[data-testid="stMarkdown"] div[style*="background: red;"] p {
-        color: white !important;
-    }
-
-    /* Specific for code blocks that Streamlit wraps */
-    code {
-        color: #333333 !important; /* Ensure code blocks are readable */
-    }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -169,12 +145,8 @@ if 'qa_context_input' not in st.session_state:
     st.session_state.qa_context_input = ""
 if 'qa_question_input' not in st.session_state:
     st.session_state.qa_question_input = ""
-
-# Chatbot specific session state variables
-if 'chat_input' not in st.session_state: # This will hold the current text input value
+if 'chat_input' not in st.session_state:
     st.session_state.chat_input = ""
-if 'chat_submitted' not in st.session_state: # Flag to check if send button was pressed
-    st.session_state.chat_submitted = False
 
 
 # --- Helper Functions ---
@@ -210,9 +182,7 @@ def log_to_history(service: str, input_data: str, output_data: str, success: boo
 def display_spinner_and_message(message):
     """Displays a spinner and a message for better UX during processing."""
     with st.spinner(message):
-        # Removed time.sleep(0.5) to avoid artificial lag.
-        # Real processing time will depend on the API call.
-        pass 
+        time.sleep(0.5)  # Brief pause for UX to show spinner
 
 def display_error(error_message):
     """Displays an error message in a styled box."""
@@ -266,7 +236,6 @@ def sentiment_analysis_component():
         help="Upload a CSV file with a text column for batch analysis"
     )
     
-    df = None # Initialize df outside the if block
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
@@ -275,20 +244,20 @@ def sentiment_analysis_component():
                 text_column = st.selectbox("Select text column:", df.columns)
             else:
                 st.error("CSV file appears to be empty or invalid.")
-                df = None # Reset df if invalid
+                return
         except Exception as e:
             st.error(f"Error reading CSV file: {e}")
-            df = None # Reset df on error
+            return
 
     if st.button("🔍 Analyze Sentiment", key="sentiment_button", use_container_width=True):
         if not text_input.strip() and not uploaded_file:
             st.warning("Please enter text or upload a file to analyze.")
             return
 
-        display_spinner_and_message("Analyzing sentiment...")
-        try:
-            # Handle single text input
-            if text_input.strip():
+        if text_input.strip():
+            display_spinner_and_message("Analyzing sentiment...")
+            try:
+                # Call FastAPI backend for sentiment analysis
                 response = requests.post(f"{API_BASE}/sentiment/analyze", json={"text": text_input})
                 response.raise_for_status()
                 result = response.json()
@@ -303,8 +272,8 @@ def sentiment_analysis_component():
                 with col1:
                     sentiment_color = "green" if result["label"] == "POSITIVE" else "red"
                     st.markdown(f"<div style='text-align: center; padding: 1rem; background: {sentiment_color}; color: white; border-radius: 10px;'>"
-                                 f"<h3>{result['label']}</h3><p>{result['score']:.1%} Confidence</p></div>", 
-                                 unsafe_allow_html=True)
+                              f"<h3>{result['label']}</h3><p>{result['score']:.1%} Confidence</p></div>", 
+                              unsafe_allow_html=True)
                 with col2:
                     st.metric("Confidence Score", f"{result['score']:.1%}")
                 with col3:
@@ -331,56 +300,13 @@ def sentiment_analysis_component():
                     st.success("Saved to favorites!")
                 
                 log_to_history("Sentiment Analysis", text_input, str(result))
-            
-            # Handle batch file upload
-            elif df is not None and text_column:
-                st.info(f"Processing batch analysis for column: **{text_column}**")
-                batch_results = []
-                # Simulate processing each row
-                progress_bar = st.progress(0)
-                for i, row_text in enumerate(df[text_column].astype(str)):
-                    if i >= 50: # Limit for demo purposes to avoid very long runs
-                        st.warning("Processing limited to first 50 rows for demonstration.")
-                        break
-                    
-                    try:
-                        response = requests.post(f"{API_BASE}/sentiment/analyze", json={"text": row_text})
-                        response.raise_for_status()
-                        result = response.json()
-                        batch_results.append({
-                            "original_text": row_text[:100] + "..." if len(row_text) > 100 else row_text,
-                            "label": result.get("label", "N/A"),
-                            "score": result.get("score", 0.0)
-                        })
-                    except requests.exceptions.RequestException as e:
-                        batch_results.append({
-                            "original_text": row_text[:100] + "..." if len(row_text) > 100 else row_text,
-                            "label": "Error",
-                            "score": 0.0,
-                            "error": str(e)
-                        })
-                    progress_bar.progress((i + 1) / min(len(df), 50))
-
-                st.subheader("📊 Batch Analysis Results (First 50 Rows)")
-                batch_df = pd.DataFrame(batch_results)
-                st.dataframe(batch_df, use_container_width=True)
-
-                csv_output = batch_df.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download Batch Results CSV",
-                    data=csv_output,
-                    file_name="sentiment_batch_results.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-                log_to_history("Sentiment Analysis (Batch)", uploaded_file.name, f"Processed {len(batch_results)} rows.")
-
-        except requests.exceptions.RequestException as e:
-            display_error(f"Could not analyze sentiment: {e}")
-            log_to_history("Sentiment Analysis", text_input, str(e), False)
-        except Exception as e:
-            display_error(f"An unexpected error occurred: {e}")
-            log_to_history("Sentiment Analysis", text_input, str(e), False)
+                
+            except requests.exceptions.RequestException as e:
+                display_error(f"Could not analyze sentiment: {e}")
+                log_to_history("Sentiment Analysis", text_input, str(e), False)
+            except Exception as e:
+                display_error(f"An unexpected error occurred: {e}")
+                log_to_history("Sentiment Analysis", text_input, str(e), False)
 
 def text_summarization_component():
     """Streamlit component for Text Summarization."""
@@ -430,7 +356,7 @@ def text_summarization_component():
                     processed_text = uploaded_doc.getvalue().decode("utf-8")
                 else:
                     st.info("PDF/DOCX processing would require additional libraries (e.g., PyPDF2, python-docx) and backend logic. Using mock text.")
-                    processed_text = "Sample text extracted from document for demonstration purposes, such as an annual report detailing the company's financial performance, market expansion strategies, and sustainability initiatives. The report also highlights key product launches and technological advancements over the past year, underscoring the commitment to innovation and customer satisfaction. Future plans involve aggressive growth in emerging markets and continued investment in research and development to maintain a competitive edge. The board expressed optimism about the company's trajectory and its ability to achieve long-term objectives despite global economic challenges."
+                    processed_text = "Sample text extracted from document for demonstration purposes."
             
             if not processed_text.strip():
                 st.warning("No text found to summarize from input or uploaded document.")
@@ -448,9 +374,9 @@ def text_summarization_component():
             st.subheader("📝 Summary")
             if bullet_points:
                 bullet_summary = "• " + summary.replace(". ", ".\n• ")
-                st.markdown(f"<div style='background: #f8f9fa; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #667eea;'>{bullet_summary}</div>", unsafe_allow_html=True)
+                st.markdown(bullet_summary)
             else:
-                st.markdown(f"<div style='background: #f8f9fa; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #667eea;'>{summary}</div>", unsafe_allow_html=True)
+                st.info(summary)
             
             if include_keywords and keywords:
                 st.subheader("🔑 Key Terms")
@@ -656,7 +582,7 @@ def image_captioning_component():
                 st.subheader("🔍 Analysis Results")
                 
                 st.markdown(f"<div style='background: #e3f2fd; padding: 1rem; border-radius: 10px; border-left: 4px solid #2196f3;'>"
-                             f"<h4>📝 Image Caption</h4><p>{caption}</p></div>", unsafe_allow_html=True)
+                          f"<h4>📝 Image Caption</h4><p>{caption}</p></div>", unsafe_allow_html=True)
                 
                 if any([objects, scene, extracted_text, colors, faces is not None]):
                     col1, col2 = st.columns(2)
@@ -697,8 +623,7 @@ def image_captioning_component():
                 with col3:
                     st.metric("Processing Time", "2.3s")
                 with col4:
-                    relevance = "High" if 0.85 > 0.8 else "Medium" if 0.85 > 0.6 else "Low" # Mock value
-                    st.metric("Relevance", relevance)
+                    st.metric("Image Quality", "High")
                 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -758,22 +683,21 @@ def translation_component():
     
     with col2:
         st.subheader("Translation Settings")
-        source_lang_options = [
+        source_lang = st.selectbox("Source Language:", [
             "Auto-detect", "English", "Spanish", "French", "German", 
             "Italian", "Portuguese", "Russian", "Chinese", "Japanese", 
             "Korean", "Arabic", "Hindi", "Dutch", "Swedish"
-        ]
-        target_lang_options = [
+        ], key="translation_source", index=["Auto-detect", "English", "Spanish", "French", "German", 
+            "Italian", "Portuguese", "Russian", "Chinese", "Japanese", 
+            "Korean", "Arabic", "Hindi", "Dutch", "Swedish"].index(st.session_state.translation_source))
+        
+        target_lang = st.selectbox("Target Language:", [
             "English", "Spanish", "French", "German", "Italian", 
             "Portuguese", "Russian", "Chinese", "Japanese", "Korean", 
             "Arabic", "Hindi", "Dutch", "Swedish"
-        ]
-
-        source_lang_idx = source_lang_options.index(st.session_state.translation_source) if st.session_state.translation_source in source_lang_options else 0
-        target_lang_idx = target_lang_options.index(st.session_state.translation_target) if st.session_state.translation_target in target_lang_options else 0
-
-        source_lang = st.selectbox("Source Language:", source_lang_options, key="translation_source", index=source_lang_idx)
-        target_lang = st.selectbox("Target Language:", target_lang_options, key="translation_target", index=target_lang_idx)
+        ], key="translation_target", index=["English", "Spanish", "French", "German", "Italian", 
+            "Portuguese", "Russian", "Chinese", "Japanese", "Korean", 
+            "Arabic", "Hindi", "Dutch", "Swedish"].index(st.session_state.translation_target))
         
         formal_tone = st.checkbox("Formal tone", value=False)
         preserve_formatting = st.checkbox("Preserve formatting", value=True)
@@ -847,11 +771,7 @@ def translation_component():
                     "Arabic": "مرحبا، كيف حالك اليوم؟",
                     "Hindi": "नमस्ते, आज आप कैसे हैं?"
                 }
-                # A very basic mock: if the target lang is in mock_translations, return its sample, else generic.
-                if target_lang in mock_translations:
-                    translated_text = mock_translations[target_lang]
-                else:
-                    translated_text = f"Translation to {target_lang} is not supported by the current backend. Original: '{original_text_to_translate[:50]}...'"
+                translated_text = mock_translations.get(target_lang, f"Translation to {target_lang} is not supported by the current backend or mocked. Original: {original_text_to_translate}")
             
             st.session_state.translation_history.append({
                 'original': original_text_to_translate,
@@ -866,10 +786,10 @@ def translation_component():
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown(f"<div style='background: #f8f9fa; padding: 1rem; border-radius: 10px; border-left: 4px solid #dc3545;'>"
-                             f"<h5>📝 Original ({source_lang})</h5><p>{original_text_to_translate}</p></div>", unsafe_allow_html=True)
+                          f"<h5>📝 Original ({source_lang})</h5><p>{original_text_to_translate}</p></div>", unsafe_allow_html=True)
             with col2:
                 st.markdown(f"<div style='background: #f8f9fa; padding: 1rem; border-radius: 10px; border-left: 4px solid #28a745;'>"
-                             f"<h5>🔄 Translation ({target_lang})</h5><p>{translated_text}</p></div>", unsafe_allow_html=True)
+                          f"<h5>🔄 Translation ({target_lang})</h5><p>{translated_text}</p></div>", unsafe_allow_html=True)
             
             st.subheader("📊 Translation Metrics")
             col1, col2, col3, col4 = st.columns(4)
@@ -917,7 +837,7 @@ def translation_component():
             display_error(f"An unexpected error occurred: {e}")
             log_to_history("Language Translation", text_input[:100], str(e), False)
 
-def Youtubeing_component():
+def question_answering_component():
     """Streamlit component for Question Answering."""
     st.header("❓ Question Answering")
     st.write("Get intelligent answers to your questions with context-aware AI.")
@@ -937,7 +857,7 @@ def Youtubeing_component():
             "Ask your question:", 
             key="qa_question_input",
             placeholder="What would you like to know?",
-            value=st.session_state.qa_question_input # This is correctly linked to session state
+            value=st.session_state.qa_question_input
         )
     
     with col2:
@@ -970,7 +890,6 @@ def Youtubeing_component():
     for i, question in enumerate(sample_questions):
         with cols[i % 3]:
             if st.button(f"📝 {question[:20]}...", key=f"sample_q_{i}", use_container_width=True):
-                # Correct way to set a widget's value from a button
                 st.session_state.qa_question_input = question
                 st.rerun()
 
@@ -989,8 +908,8 @@ def Youtubeing_component():
             
             st.subheader("💡 Answer")
             st.markdown(f"<div style='background: #e8f5e8; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #4caf50;'>"
-                         f"<h4>🤔 Question:</h4><p><em>{question_input}</em></p>"
-                         f"<h4>💡 Answer:</h4><p>{answer}</p></div>", unsafe_allow_html=True)
+                      f"<h4>🤔 Question:</h4><p><em>{question_input}</em></p>"
+                      f"<h4>💡 Answer:</h4><p>{answer}</p></div>", unsafe_allow_html=True)
             
             if confidence_display:
                 st.subheader("📊 Answer Quality")
@@ -1069,48 +988,34 @@ def chatbot_component():
         
         if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_button"):
             st.session_state.chat_history = []
-            st.session_state.chat_input = "" # Clear the input box value
-            st.session_state.chat_submitted = False # Reset submitted flag
             st.rerun()
     
     with col1:
         st.subheader("💬 Chat History")
-        # Use a container for chat history, and ensure it scrolls to bottom
-        chat_container = st.container(height=400) 
+        chat_container = st.container(height=400) # Fixed height for chat history
         
         with chat_container:
-            for i, message in enumerate(st.session_state.chat_history):
-                if message['role'] == 'user':
-                    st.markdown(f"<div style='background: #e3f2fd; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-left: 2rem;'>"
-                                 f"<strong>🙋 You:</strong> {message['content']}</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<div style='background: #f3e5f5; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-right: 2rem;'>"
-                                 f"<strong>🤖 AI:</strong> {message['content']}</div>", unsafe_allow_html=True)
-            if not st.session_state.chat_history:
+            if st.session_state.chat_history:
+                for i, message in enumerate(st.session_state.chat_history):
+                    if message['role'] == 'user':
+                        st.markdown(f"<div style='background: #e3f2fd; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-left: 2rem;'>"
+                                  f"<strong>🙋 You:</strong> {message['content']}</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<div style='background: #f3e5f5; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-right: 2rem;'>"
+                                  f"<strong>🤖 AI:</strong> {message['content']}</div>", unsafe_allow_html=True)
+            else:
                 st.info("👋 Start a conversation! Type your message below.")
-    
-    # Define a callback function to handle sending the message
-    def handle_chat_send():
-        st.session_state.chat_submitted = True
-        st.session_state.chat_input = st.session_state.main_chat_input_widget # Capture current text input value
-
-    # Text input for user message
-    user_message_widget = st.text_input(
-        "Type your message:", 
-        key="main_chat_input_widget", # Unique key for this widget
-        placeholder="Ask me anything...",
-        value=st.session_state.chat_input, # This widget's value is controlled by session state
-        # on_change is used here to set the submitted flag and capture input value when ENTER is pressed
-        # The condition `st.session_state.chat_input != st.session_state.main_chat_input_widget` is to prevent redundant calls
-        # if no text actually changed (e.g. on a full page rerun from another widget)
-        on_change=handle_chat_send if st.session_state.chat_input != st.session_state.main_chat_input_widget else None 
-    )
     
     col1, col2 = st.columns([4, 1])
     with col1:
-        pass 
+        user_input = st.text_input(
+            "Type your message:", 
+            key="chat_input",
+            placeholder="Ask me anything...",
+            value=st.session_state.chat_input
+        )
     with col2:
-        send_button = st.button("📤 Send", key="send_chat", use_container_width=True, on_click=handle_chat_send)
+        send_button = st.button("📤 Send", key="send_chat", use_container_width=True)
     
     st.subheader("⚡ Quick Prompts")
     quick_prompts = [
@@ -1121,24 +1026,14 @@ def chatbot_component():
     cols = st.columns(3)
     for i, prompt in enumerate(quick_prompts):
         with cols[i % 3]:
-            # When a quick prompt button is clicked, directly update st.session_state.chat_input
-            # and set the submitted flag.
             if st.button(f"💬 {prompt}", key=f"quick_{i}", use_container_width=True):
                 st.session_state.chat_input = prompt
-                st.session_state.chat_submitted = True # Mark as submitted
-                st.rerun() # Rerun to trigger the chat processing logic
+                st.rerun()
 
-    # Process message if chat_submitted flag is True and there's valid input
-    if st.session_state.chat_submitted and st.session_state.chat_input.strip():
-        current_user_message = st.session_state.chat_input.strip()
-
-        # Reset the submitted flag immediately to prevent re-processing on subsequent reruns
-        st.session_state.chat_submitted = False 
-
-        # Add user message to history
+    if send_button and user_input.strip():
         st.session_state.chat_history.append({
             'role': 'user',
-            'content': current_user_message,
+            'content': user_input,
             'timestamp': datetime.now().strftime("%H:%M:%S")
         })
         
@@ -1146,14 +1041,14 @@ def chatbot_component():
         try:
             # Mock AI response (backend integration would go here)
             ai_responses = {
-                "Professional": f"Thank you for your question about '{current_user_message}'. Based on my analysis, I can provide you with a comprehensive response that addresses your inquiry professionally and thoroughly.",
-                "Friendly": f"Hey there! Great question about '{current_user_message}'! I'd be happy to help you with that. Let me share some insights that might be useful for you.",
-                "Technical": f"Analyzing your query '{current_user_message}', I can provide technical specifications and detailed implementation details relevant to your request.",
-                "Creative": f"What an interesting question about '{current_user_message}'! Let me explore this creatively and provide you with some imaginative perspectives and solutions.",
-                "Humorous": f"Ha! You asked about '{current_user_message}' - that's a great question! Let me give you an answer that's both informative and entertaining."
+                "Professional": f"Thank you for your question about '{user_input}'. Based on my analysis, I can provide you with a comprehensive response that addresses your inquiry professionally and thoroughly.",
+                "Friendly": f"Hey there! Great question about '{user_input}'! I'd be happy to help you with that. Let me share some insights that might be useful for you.",
+                "Technical": f"Analyzing your query '{user_input}', I can provide technical specifications and detailed implementation details relevant to your request.",
+                "Creative": f"What an interesting question about '{user_input}'! Let me explore this creatively and provide you with some imaginative perspectives and solutions.",
+                "Humorous": f"Ha! You asked about '{user_input}' - that's a great question! Let me give you an answer that's both informative and entertaining."
             }
             
-            ai_response = ai_responses.get(personality, f"I understand you're asking about '{current_user_message}'. Here's my response based on the available information and context.")
+            ai_response = ai_responses.get(personality, f"I understand you're asking about '{user_input}'. Here's my response based on the available information and context.")
             
             st.session_state.chat_history.append({
                 'role': 'assistant',
@@ -1161,18 +1056,13 @@ def chatbot_component():
                 'timestamp': datetime.now().strftime("%H:%M:%S")
             })
             
-            # Clear the input box after sending the message
-            st.session_state.chat_input = "" 
-            log_to_history("Chatbot", current_user_message, ai_response)
-            st.rerun() # Rerun to display the updated chat history immediately
+            st.session_state.chat_input = ""
+            log_to_history("Chatbot", user_input, ai_response)
+            st.rerun()
             
         except Exception as e:
             display_error(f"Unexpected error: {e}")
-            log_to_history("Chatbot", current_user_message, str(e), False)
-    elif st.session_state.chat_submitted and not st.session_state.chat_input.strip(): # If button was pressed but input was empty
-        st.warning("Please type a message to send.")
-        st.session_state.chat_submitted = False # Reset flag if input was empty
-
+            log_to_history("Chatbot", user_input, str(e), False)
 
 def speech_to_text_component():
     """Streamlit component for Speech-to-Text."""
@@ -1230,7 +1120,8 @@ def speech_to_text_component():
         display_spinner_and_message("Converting speech to text...")
         try:
             # Call FastAPI backend for STT
-            response = requests.post(f"{API_BASE}/stt", files={"file": (source_filename, source_audio_data, source_mime)})
+            files = {"file": (source_filename, source_audio_data, source_mime)}
+            response = requests.post(f"{API_BASE}/stt", files=files)
             response.raise_for_status()
             result = response.json()
             transcription = result.get("transcribed_text", "Could not transcribe audio.")
@@ -1297,7 +1188,7 @@ def speech_to_text_component():
                     st.success("Saved to favorites!")
             with col3:
                 if st.button("📋 Copy to Clipboard", key="copy_stt"):
-                    st.info("Transcript copied to clipboard!") # Streamlit doesn't have direct clipboard access in browser
+                    st.info("Transcript copied to clipboard!")
             
             log_to_history("Speech to Text", source_filename, transcription)
             
@@ -1387,7 +1278,7 @@ def text_to_speech_component():
             st.subheader("🌊 Audio Waveform")
             time_points = np.linspace(0, estimated_duration, int(estimated_duration * 100))
             waveform = np.sin(2 * np.pi * 2 * time_points) * np.exp(-time_points/10) + \
-                             0.5 * np.sin(2 * np.pi * 5 * time_points) * np.exp(-time_points/5)
+                       0.5 * np.sin(2 * np.pi * 5 * time_points) * np.exp(-time_points/5)
             
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=time_points, y=waveform, mode='lines', name='Waveform', line=dict(color='#667eea')))
@@ -1544,97 +1435,13 @@ def favorites_component():
 
     if st.session_state.favorites:
         for i, item in enumerate(st.session_state.favorites):
-            # Using an expander for each favorite item to keep the page clean
-            with st.expander(f"**{item['type']}** saved on {item['timestamp']}"):
-                # Using a combination of markdown and st.json for better readability
-                st.markdown(f"**Type:** {item['type']}")
-                st.markdown(f"**Timestamp:** {item['timestamp']}")
-                st.markdown("---")
-                st.write("**Content:**")
-                st.json(item['content'])
-                
-                if st.button(f"Remove this {item['type']} from Favorites", key=f"remove_fav_{i}"):
-                    st.session_state.favorites.pop(i)
-                    st.rerun()
-            st.markdown("---") # Add a separator after each favorite item
+            st.subheader(f"{item['type']} - {item['timestamp']}")
+            st.json(item['content'])
+            if st.button(f"Remove from Favorites {i}", key=f"remove_fav_{i}"):
+                st.session_state.favorites.pop(i)
+                st.rerun()
     else:
         st.info("No favorites saved yet.")
-
-def Youtubeing_component():
-    """Placeholder for Youtube Analysis/Processing component."""
-    st.header("▶️ YouTube Content Analysis")
-    st.write("Extract insights, summaries, or answer questions from YouTube videos.")
-
-    youtube_url = st.text_input("Enter YouTube Video URL:", placeholder="e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ", key="youtube_url_input")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        analysis_type = st.selectbox("Select Analysis Type:", ["Summarize Video", "Q&A on Video", "Transcribe Video"], key="youtube_analysis_type")
-    with col2:
-        if analysis_type == "Q&A on Video":
-            youtube_question = st.text_input("Question about the video:", placeholder="What is the main topic?", key="youtube_qa_question")
-            
-    if st.button("🚀 Analyze YouTube Video", key="analyze_youtube_button", use_container_width=True):
-        if not youtube_url.strip():
-            st.warning("Please enter a YouTube URL.")
-            return
-        
-        display_spinner_and_message(f"Analyzing video for {analysis_type}...")
-        try:
-            # Mock API call for YouTube analysis - replace with actual backend call
-            # Your backend would need libraries like youtube-dlp, pytube, whisper, etc.
-            if analysis_type == "Summarize Video":
-                mock_result = {"summary": "This video discusses the advancements in AI technology, focusing on large language models and their impact on various industries. It highlights the ethical considerations and future potential of AI in daily life."}
-                output_display = f"**Summary:** {mock_result['summary']}"
-                log_to_history("YouTube Summarization", youtube_url, mock_result['summary'])
-            elif analysis_type == "Q&A on Video":
-                if not youtube_question.strip():
-                    st.warning("Please enter a question for Q&A.")
-                    return
-                mock_result = {"answer": f"Regarding your question '{youtube_question}', the video explains that AI models are becoming more sophisticated, enabling natural language understanding and generation, which can be applied in customer service, content creation, and data analysis."}
-                output_display = f"**Question:** {youtube_question}\n\n**Answer:** {mock_result['answer']}"
-                log_to_history("YouTube Q&A", f"{youtube_url} | Q: {youtube_question}", mock_result['answer'])
-            elif analysis_type == "Transcribe Video":
-                mock_result = {"transcription": "Hello, this is a sample transcription of a YouTube video. Artificial intelligence is rapidly evolving, bringing new capabilities to the forefront. We are seeing major breakthroughs in natural language processing and computer vision."}
-                output_display = f"**Transcription:**\n\n```\n{mock_result['transcription']}\n```"
-                log_to_history("YouTube Transcription", youtube_url, mock_result['transcription'])
-            
-            st.subheader(f"📊 {analysis_type} Results")
-            st.markdown(f"<div style='background: #f8f9fa; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #764ba2;'>{output_display}</div>", unsafe_allow_html=True)
-            display_success(f"{analysis_type} completed successfully!")
-
-            if st.button("⭐ Save to Favorites", key="save_youtube_analysis"):
-                add_to_favorites(f"YouTube {analysis_type}", {
-                    'url': youtube_url,
-                    'result': mock_result
-                })
-                st.success("Saved to favorites!")
-
-        except requests.exceptions.RequestException as e:
-            display_error(f"Could not analyze YouTube video: {e}")
-            log_to_history(f"YouTube {analysis_type}", youtube_url, str(e), False)
-        except Exception as e:
-            display_error(f"An unexpected error occurred: {e}")
-            log_to_history(f"YouTube {analysis_type}", youtube_url, str(e), False)
-
-    # Example of how Youtubeing_component might interact with QA component
-    st.subheader("🔗 Ask a question in Question Answering Tab based on this video")
-    yt_qa_sample_questions = [
-        "What is the main topic of the video?",
-        "Who is the speaker?",
-        "What are the key takeaways?",
-        "How long is the video?"
-    ]
-    cols = st.columns(2)
-    for i, question in enumerate(yt_qa_sample_questions):
-        with cols[i % 2]:
-            if st.button(f"❓ {question[:30]}...", key=f"yt_qa_q_{i}", use_container_width=True):
-                # THIS IS THE FIX: Directly update st.session_state.qa_question_input
-                # and then rerun. This makes the value available for the QA component
-                # in the next rerun, avoiding the modification error.
-                st.session_state.qa_question_input = question
-                st.rerun()
-
 
 # --- Main Application Layout ---
 
@@ -1656,10 +1463,10 @@ else:
 st.markdown('<div class="main-header"><h1>🤖 AI Services Toolkit Pro Dashboard</h1></div>', unsafe_allow_html=True)
 
 # Use st.tabs for navigation
-tab_sentiment, tab_summarization, tab_generation, tab_captioning, tab_translation, tab_tts, tab_stt, tab_qa, tab_chatbot, tab_youtube, tab_history, tab_favorites, tab_settings = st.tabs([
+tab_sentiment, tab_summarization, tab_generation, tab_captioning, tab_translation, tab_tts, tab_stt, tab_qa, tab_chatbot, tab_history, tab_favorites, tab_settings = st.tabs([
     "Sentiment Analysis", "Text Summarization", "Text Generation",
     "Image Analysis", "Translation", "Text-to-Speech", "Speech-to-Text",
-    "Question Answering", "AI Chatbot", "YouTube Analysis", "History", "Favorites", "Settings"
+    "Question Answering", "AI Chatbot", "History", "Favorites", "Settings"
 ])
 
 # Render components in their respective tabs
@@ -1685,13 +1492,10 @@ with tab_stt:
     speech_to_text_component()
 
 with tab_qa:
-    Youtubeing_component()
+    question_answering_component()
 
 with tab_chatbot:
     chatbot_component()
-
-with tab_youtube: # Added new tab for Youtubeing_component
-    Youtubeing_component()
 
 with tab_history:
     history_and_analytics_component()
@@ -1734,7 +1538,6 @@ with tab_settings:
     current_api_base_input = API_BASE # Read current value for the text_input
     new_api_base_from_input = st.text_input("Backend API Base URL:", value=current_api_base_input, key="settings_api_base_input")
     
-    # Check if the API_BASE needs to be updated and force a rerun
     if new_api_base_from_input != API_BASE:
         st.warning(f"API Base URL changed from {API_BASE} to {new_api_base_from_input}. This change will apply on next rerun.")
         # Update the module-level variable directly using globals()
