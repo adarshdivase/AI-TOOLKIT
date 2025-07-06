@@ -5,5 +5,6 @@ torch # Or tensorflow, depending on your transformers backend (torch is commonly
 Pillow
 soundfile # For handling WAV audio files in backend
 numpy # For numerical operations with audio data
-streamlit
-requests
+streamlit>=1.16.0 # Ensure Streamlit version supports audio_recorder
+pydub # Required by Streamlit's audio_recorder for some functionalities
+audioread # Required by Streamlit's audio_recorder for some functionalities
