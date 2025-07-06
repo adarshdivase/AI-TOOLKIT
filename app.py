@@ -288,8 +288,8 @@ def sentiment_analysis_component():
                 with col1:
                     sentiment_color = "green" if result["label"] == "POSITIVE" else "red"
                     st.markdown(f"<div style='text-align: center; padding: 1rem; background: {sentiment_color}; color: white; border-radius: 10px;'>"
-                                 f"<h3>{result['label']}</h3><p>{result['score']:.1%} Confidence</p></div>", 
-                                 unsafe_allow_html=True)
+                                f"<h3>{result['label']}</h3><p>{result['score']:.1%} Confidence</p></div>", 
+                                unsafe_allow_html=True)
                 with col2:
                     st.metric("Confidence Score", f"{result['score']:.1%}")
                 with col3:
@@ -598,7 +598,7 @@ def image_captioning_component():
                 st.subheader("🔍 Analysis Results")
                 
                 st.markdown(f"<div style='background: #e3f2fd; padding: 1rem; border-radius: 10px; border-left: 4px solid #2196f3;'>"
-                             f"<h4>📝 Image Caption</h4><p>{caption}</p></div>", unsafe_allow_html=True)
+                            f"<h4>📝 Image Caption</h4><p>{caption}</p></div>", unsafe_allow_html=True)
                 
                 if any([objects, scene, extracted_text, colors, faces is not None]):
                     col1, col2 = st.columns(2)
@@ -802,10 +802,10 @@ def translation_component():
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown(f"<div style='background: #f8f9fa; padding: 1rem; border-radius: 10px; border-left: 4px solid #dc3545;'>"
-                             f"<h5>📝 Original ({source_lang})</h5><p>{original_text_to_translate}</p></div>", unsafe_allow_html=True)
+                            f"<h5>📝 Original ({source_lang})</h5><p>{original_text_to_translate}</p></div>", unsafe_allow_html=True)
             with col2:
                 st.markdown(f"<div style='background: #f8f9fa; padding: 1rem; border-radius: 10px; border-left: 4px solid #28a745;'>"
-                             f"<h5>🔄 Translation ({target_lang})</h5><p>{translated_text}</p></div>", unsafe_allow_html=True)
+                            f"<h5>🔄 Translation ({target_lang})</h5><p>{translated_text}</p></div>", unsafe_allow_html=True)
             
             st.subheader("📊 Translation Metrics")
             col1, col2, col3, col4 = st.columns(4)
@@ -858,6 +858,10 @@ def Youtubeing_component():
     st.header("❓ Question Answering")
     st.write("Get intelligent answers to your questions with context-aware AI.")
 
+    # Define the callback function to update session state
+    def set_question_text(question):
+        st.session_state.qa_question_input = question
+
     col1, col2 = st.columns([2, 1])
     
     with col1:
@@ -866,14 +870,14 @@ def Youtubeing_component():
             height=150, 
             key="qa_context_input",
             placeholder="Enter relevant context or background information...",
-            value=st.session_state.qa_context_input
+            value=st.session_state.get("qa_context_input", "")
         )
         
         question_input = st.text_input(
             "Ask your question:", 
             key="qa_question_input",
             placeholder="What would you like to know?",
-            value=st.session_state.qa_question_input
+            value=st.session_state.get("qa_question_input", "")
         )
     
     with col2:
@@ -905,27 +909,35 @@ def Youtubeing_component():
     cols = st.columns(3)
     for i, question in enumerate(sample_questions):
         with cols[i % 3]:
-            if st.button(f"📝 {question[:20]}...", key=f"sample_q_{i}", use_container_width=True):
-                st.session_state.qa_question_input = question
-                st.rerun()
+            # Use the on_click callback to set the session state
+            st.button(
+                f"📝 {question[:20]}...", 
+                key=f"sample_q_{i}", 
+                use_container_width=True,
+                on_click=set_question_text,
+                args=(question,)
+            )
 
     if st.button("🤔 Get Answer", key="qa_button", use_container_width=True):
-        if not question_input.strip():
+        # Check the session state directly as it's the single source of truth
+        if not st.session_state.qa_question_input.strip():
             st.warning("Please enter a question.")
             return
 
         display_spinner_and_message("Searching for the best answer...")
         try:
-            # Mock answer for demonstration (backend integration would go here)
-            answer = f"Based on the question '{question_input}', here's a comprehensive answer: This is a complex topic that requires careful consideration of multiple factors. The primary explanation involves understanding the fundamental principles and their practical applications. Key points include the historical context, current understanding, and future implications of this subject matter."
+            # Mock answer for demonstration
+            question_to_answer = st.session_state.qa_question_input
+            context_provided = st.session_state.qa_context_input
+            answer = f"Based on the question '{question_to_answer}', here's a comprehensive answer: This is a complex topic that requires careful consideration of multiple factors. The primary explanation involves understanding the fundamental principles and their practical applications. Key points include the historical context, current understanding, and future implications of this subject matter."
             
             confidence = 0.89
             sources = ["Encyclopedia Britannica", "Academic Journal", "Expert Opinion"] if include_sources else []
             
             st.subheader("💡 Answer")
             st.markdown(f"<div style='background: #e8f5e8; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #4caf50;'>"
-                         f"<h4>🤔 Question:</h4><p><em>{question_input}</em></p>"
-                         f"<h4>💡 Answer:</h4><p>{answer}</p></div>", unsafe_allow_html=True)
+                        f"<h4>🤔 Question:</h4><p><em>{question_to_answer}</em></p>"
+                        f"<h4>💡 Answer:</h4><p>{answer}</p></div>", unsafe_allow_html=True)
             
             if confidence_display:
                 st.subheader("📊 Answer Quality")
@@ -960,8 +972,8 @@ def Youtubeing_component():
                 qa_report = f"""Question & Answer Report
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-Question: {question_input}
-Context: {context_input if context_input else 'None provided'}
+Question: {question_to_answer}
+Context: {context_provided if context_provided else 'None provided'}
 
 Answer: {answer}
 
@@ -978,17 +990,18 @@ Sources: {', '.join(sources) if sources else 'None'}
             with col2:
                 if st.button("⭐ Save to Favorites", key="save_qa"):
                     add_to_favorites("Question & Answer", {
-                        'question': question_input,
+                        'question': question_to_answer,
                         'answer': answer,
                         'confidence': confidence
                     })
                     st.success("Saved to favorites!")
             
-            log_to_history("Question Answering", question_input, answer)
+            log_to_history("Question Answering", question_to_answer, answer)
             
         except Exception as e:
             display_error(f"Unexpected error: {e}")
-            log_to_history("Question Answering", question_input, str(e), False)
+            log_to_history("Question Answering", st.session_state.qa_question_input, str(e), False)
+
 
 def chatbot_component():
     """Streamlit component for AI Chatbot."""
@@ -1015,10 +1028,10 @@ def chatbot_component():
                 for i, message in enumerate(st.session_state.chat_history):
                     if message['role'] == 'user':
                         st.markdown(f"<div style='background: #e3f2fd; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-left: 2rem;'>"
-                                     f"<strong>🙋 You:</strong> {message['content']}</div>", unsafe_allow_html=True)
+                                    f"<strong>🙋 You:</strong> {message['content']}</div>", unsafe_allow_html=True)
                     else:
                         st.markdown(f"<div style='background: #f3e5f5; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-right: 2rem;'>"
-                                     f"<strong>🤖 AI:</strong> {message['content']}</div>", unsafe_allow_html=True)
+                                    f"<strong>🤖 AI:</strong> {message['content']}</div>", unsafe_allow_html=True)
             else:
                 st.info("👋 Start a conversation! Type your message below.")
     
@@ -1294,7 +1307,7 @@ def text_to_speech_component():
             st.subheader("🌊 Audio Waveform")
             time_points = np.linspace(0, estimated_duration, int(estimated_duration * 100))
             waveform = np.sin(2 * np.pi * 2 * time_points) * np.exp(-time_points/10) + \
-                             0.5 * np.sin(2 * np.pi * 5 * time_points) * np.exp(-time_points/5)
+                         0.5 * np.sin(2 * np.pi * 5 * time_points) * np.exp(-time_points/5)
             
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=time_points, y=waveform, mode='lines', name='Waveform', line=dict(color='#667eea')))
