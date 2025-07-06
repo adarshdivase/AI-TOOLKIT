@@ -99,13 +99,6 @@ class QuestionAnsweringOut(BaseModel):
 
 api_router = APIRouter()
 
-@api_router.get("/status")
-def get_status():
-    """
-    Returns the current loading status of the AI models.
-    """
-    return {"models_loaded": MODELS_LOADED}
-
 @api_router.post("/sentiment/analyze")
 def analyze_sentiment(payload: TextIn):
     """
