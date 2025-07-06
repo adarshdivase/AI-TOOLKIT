@@ -408,7 +408,7 @@ def text_summarization_component():
             with col2:
                 st.metric("Summary Length", f"{len(summary)} chars")
             with col3:
-                compression_ratio = len(summary) / len(processed_text) if processed_text else 0
+                compression_ratio = len(summary) / len(processed_text) if len(processed_text) > 0 else 0
                 st.metric("Compression Ratio", f"{compression_ratio:.1%}")
             with col4:
                 reading_time = len(summary.split()) / 200  # Average reading speed
@@ -436,10 +436,10 @@ def text_summarization_component():
             
         except requests.exceptions.RequestException as e:
             display_error(f"Could not summarize text: {e}")
-            log_to_history("Text Summarization", processed_text[:100], str(e), False)
+            log_to_history("Text Summarization", text_input[:100], str(e), False)
         except Exception as e:
             display_error(f"An unexpected error occurred: {e}")
-            log_to_history("Text Summarization", processed_text[:100], str(e), False)
+            log_to_history("Text Summarization", text_input[:100], str(e), False)
 
 def text_generation_component():
     """Streamlit component for Creative Text Generation."""
@@ -926,13 +926,28 @@ def Youtubeing_component():
 
         display_spinner_and_message("Searching for the best answer...")
         try:
-            # Mock answer for demonstration
+            # --- THIS BLOCK IS MODIFIED TO MAKE A REAL API CALL ---
+            # NOTE: For this to work, your FastAPI backend must have a `/qa/ask` endpoint
+            # that accepts a question and context and returns a JSON with an "answer".
+            
             question_to_answer = st.session_state.qa_question_input
             context_provided = st.session_state.qa_context_input
-            answer = f"Based on the question '{question_to_answer}', here's a comprehensive answer: This is a complex topic that requires careful consideration of multiple factors. The primary explanation involves understanding the fundamental principles and their practical applications. Key points include the historical context, current understanding, and future implications of this subject matter."
             
-            confidence = 0.89
-            sources = ["Encyclopedia Britannica", "Academic Journal", "Expert Opinion"] if include_sources else []
+            payload = {
+                "question": question_to_answer,
+                "context": context_provided
+            }
+
+            # Call your real backend endpoint
+            # We assume the endpoint is named `/qa/ask` for this example
+            response = requests.post(f"{API_BASE}/qa/ask", json=payload)
+            response.raise_for_status() # This will raise an error if the API call fails
+
+            # Get the real answer from the response
+            result = response.json()
+            answer = result.get("answer", "Sorry, I could not find an answer.")
+            confidence = result.get("confidence", 0.89) # Default confidence if not provided
+            sources = result.get("sources", ["Source 1", "Source 2"]) if include_sources else [] # Default sources
             
             st.subheader("💡 Answer")
             st.markdown(f"<div style='background: #e8f5e8; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #4caf50;'>"
@@ -947,7 +962,7 @@ def Youtubeing_component():
                 with col2:
                     st.metric("Answer Length", f"{len(answer.split())} words")
                 with col3:
-                    st.metric("Processing Time", "2.1s")
+                    st.metric("Processing Time", "2.1s") # This can also be returned from backend
                 with col4:
                     relevance = "High" if confidence > 0.8 else "Medium" if confidence > 0.6 else "Low"
                     st.metric("Relevance", relevance)
@@ -959,11 +974,11 @@ def Youtubeing_component():
             
             if multiple_perspectives:
                 st.subheader("🔄 Alternative Perspectives")
-                perspectives = [
+                perspectives = result.get("perspectives", [
                     "From a scientific standpoint, this phenomenon can be explained through...",
                     "Historically, this has been understood as...",
                     "From a practical application perspective..."
-                ]
+                ]) # Get from backend or use mock
                 for i, perspective in enumerate(perspectives, 1):
                     st.markdown(f"**Perspective {i}:** {perspective}")
             
@@ -998,8 +1013,11 @@ Sources: {', '.join(sources) if sources else 'None'}
             
             log_to_history("Question Answering", question_to_answer, answer)
             
+        except requests.exceptions.RequestException as e:
+            display_error(f"Could not get answer from backend: {e}")
+            log_to_history("Question Answering", st.session_state.qa_question_input, str(e), False)
         except Exception as e:
-            display_error(f"Unexpected error: {e}")
+            display_error(f"An unexpected error occurred: {e}")
             log_to_history("Question Answering", st.session_state.qa_question_input, str(e), False)
 
 
@@ -1125,12 +1143,6 @@ def speech_to_text_component():
     speaker_detection = st.checkbox("Speaker Detection")
     timestamps = st.checkbox("Include Timestamps")
     
-    # Removed st.audio_recorder due to persistent AttributeError
-    # st.subheader("🎙️ Live Recording")
-    # audio_bytes_recorded = st.audio_recorder("Click to record audio", key="stt_audio_recorder")
-    # if audio_bytes_recorded:
-    #     st.audio(audio_bytes_recorded, format="audio/wav")
-
     source_audio_data = None
     source_filename = "audio_input.wav"
     source_mime = "audio/wav"
