@@ -1,13 +1,15 @@
-fastapi
-uvicorn[standard]
-transformers
-torch # Or tensorflow, depending on your transformers backend (torch is commonly used)
-Pillow
-soundfile # For handling WAV audio files in backend
-numpy # For numerical operations with audio data
-streamlit>=1.16.0 # Ensure Streamlit version supports audio_recorder and other features
-pydub # Often required for Streamlit's audio_recorder and general audio processing
-audioread # Also often required for audio file reading
-librosa # General audio processing library, useful for STT/TTS dependencies
-pandas # For data handling in Streamlit components (History, Analytics)
-plotly # For interactive charts in Streamlit (History, Analytics)
+    fastapi
+    uvicorn[standard]
+    transformers
+    torch # Or tensorflow, depending on your transformers backend (torch is commonly used)
+    Pillow
+    soundfile # For handling WAV audio files in backend
+    numpy # For numerical operations with audio data
+    streamlit>=1.16.0 # Ensure Streamlit version supports audio_recorder and other features
+    pydub # Often required for Streamlit's audio_recorder and general audio processing
+    audioread # Also often required for audio file reading
+    librosa # General audio processing library, often needed for STT/TTS dependencies
+    pandas # For data handling in Streamlit components (History, Analytics)
+    plotly # For interactive charts in Streamlit (History, Analytics)
+    python-multipart # REQUIRED for FastAPI to handle form data (file uploads)
+    
