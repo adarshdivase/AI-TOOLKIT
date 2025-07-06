@@ -1538,11 +1538,14 @@ with tab_settings:
     )
 
     st.subheader("API Configuration (Advanced)")
+    # No 'global API_BASE' needed here. API_BASE is a module-level variable.
+    # When this code runs, it reads the current value of API_BASE.
+    # Reassigning it directly updates the module-level variable for subsequent runs within the same script execution.
     new_api_base = st.text_input("Backend API Base URL:", value=API_BASE, key="settings_api_base_input")
     if new_api_base != API_BASE:
         st.warning(f"API Base URL changed from {API_BASE} to {new_api_base}. This change will apply on next rerun.")
-        global API_BASE # This will only affect this script run, not persistent
-        API_BASE = new_api_base
+        # Directly reassign the module-level variable
+        globals()['API_BASE'] = new_api_base
         st.button("Apply API Change and Rerun", key="apply_api_change")
 
 st.markdown("---")
