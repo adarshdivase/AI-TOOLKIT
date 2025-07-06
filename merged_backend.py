@@ -176,6 +176,7 @@ if 'chat_input' not in st.session_state: # This will hold the current text input
 if 'chat_submitted' not in st.session_state: # Flag to check if send button was pressed
     st.session_state.chat_submitted = False
 # Initialize the key for the text_input widget explicitly to avoid AttributeError
+# Ensure this key exists before any widget tries to access it in on_change, etc.
 if 'main_chat_input_widget' not in st.session_state:
     st.session_state.main_chat_input_widget = ""
 
