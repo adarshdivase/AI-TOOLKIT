@@ -17,7 +17,8 @@ import numpy as np
 # --- Configuration ---
 # IMPORTANT: For deployment, change this to your deployed FastAPI backend URL
 # Example: API_BASE = "https://your-backend-url.onrender.com/api"
-API_BASE = "https://adarshdivase-ai-toolkit-backend.hf.space"
+# In app.py
+API_BASE = "https://adarshdivase-ai-toolkit-backend.hf.space/api"
 
 st.set_page_config(
     page_title="AI Services Toolkit Pro",
@@ -110,6 +111,21 @@ st.markdown("""
         border: 1px solid #e9ecef;
         margin-bottom: 1rem;
     }
+
+    /* Adjust color for generated text and translated text outputs for better visibility */
+    /* This targets the specific markdown divs with light backgrounds */
+    div[data-testid="stMarkdown"] > div > div[style*="background: #f8f9fa;"],
+    div[data-testid="stMarkdown"] > div > div[style*="background: #e3f2fd;"],
+    div[data-testid="stMarkdown"] > div > div[style*="background: #e8f5e8;"],
+    div[data-testid="stMarkdown"] > div > div[style*="background: #f0f8ff;"] {
+        color: #333333; /* Dark grey for better contrast on light backgrounds */
+    }
+    /* Specific adjustment for sentiment analysis text within the colored box */
+    div[data-testid="stMarkdown"] > div > div[style*="background: green;"],
+    div[data-testid="stMarkdown"] > div > div[style*="background: red;"] {
+        color: white; /* Keep white text for sentiment analysis result for consistency with gradient cards */
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -272,8 +288,8 @@ def sentiment_analysis_component():
                 with col1:
                     sentiment_color = "green" if result["label"] == "POSITIVE" else "red"
                     st.markdown(f"<div style='text-align: center; padding: 1rem; background: {sentiment_color}; color: white; border-radius: 10px;'>"
-                              f"<h3>{result['label']}</h3><p>{result['score']:.1%} Confidence</p></div>", 
-                              unsafe_allow_html=True)
+                                 f"<h3>{result['label']}</h3><p>{result['score']:.1%} Confidence</p></div>", 
+                                 unsafe_allow_html=True)
                 with col2:
                     st.metric("Confidence Score", f"{result['score']:.1%}")
                 with col3:
@@ -374,9 +390,9 @@ def text_summarization_component():
             st.subheader("📝 Summary")
             if bullet_points:
                 bullet_summary = "• " + summary.replace(". ", ".\n• ")
-                st.markdown(bullet_summary)
+                st.info(bullet_summary) # Use st.info for a standard, readable text block
             else:
-                st.info(summary)
+                st.info(summary) # Use st.info for a standard, readable text block
             
             if include_keywords and keywords:
                 st.subheader("🔑 Key Terms")
@@ -582,7 +598,7 @@ def image_captioning_component():
                 st.subheader("🔍 Analysis Results")
                 
                 st.markdown(f"<div style='background: #e3f2fd; padding: 1rem; border-radius: 10px; border-left: 4px solid #2196f3;'>"
-                          f"<h4>📝 Image Caption</h4><p>{caption}</p></div>", unsafe_allow_html=True)
+                             f"<h4>📝 Image Caption</h4><p>{caption}</p></div>", unsafe_allow_html=True)
                 
                 if any([objects, scene, extracted_text, colors, faces is not None]):
                     col1, col2 = st.columns(2)
@@ -786,10 +802,10 @@ def translation_component():
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown(f"<div style='background: #f8f9fa; padding: 1rem; border-radius: 10px; border-left: 4px solid #dc3545;'>"
-                          f"<h5>📝 Original ({source_lang})</h5><p>{original_text_to_translate}</p></div>", unsafe_allow_html=True)
+                             f"<h5>📝 Original ({source_lang})</h5><p>{original_text_to_translate}</p></div>", unsafe_allow_html=True)
             with col2:
                 st.markdown(f"<div style='background: #f8f9fa; padding: 1rem; border-radius: 10px; border-left: 4px solid #28a745;'>"
-                          f"<h5>🔄 Translation ({target_lang})</h5><p>{translated_text}</p></div>", unsafe_allow_html=True)
+                             f"<h5>🔄 Translation ({target_lang})</h5><p>{translated_text}</p></div>", unsafe_allow_html=True)
             
             st.subheader("📊 Translation Metrics")
             col1, col2, col3, col4 = st.columns(4)
@@ -837,7 +853,7 @@ def translation_component():
             display_error(f"An unexpected error occurred: {e}")
             log_to_history("Language Translation", text_input[:100], str(e), False)
 
-def question_answering_component():
+def Youtubeing_component():
     """Streamlit component for Question Answering."""
     st.header("❓ Question Answering")
     st.write("Get intelligent answers to your questions with context-aware AI.")
@@ -908,8 +924,8 @@ def question_answering_component():
             
             st.subheader("💡 Answer")
             st.markdown(f"<div style='background: #e8f5e8; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #4caf50;'>"
-                      f"<h4>🤔 Question:</h4><p><em>{question_input}</em></p>"
-                      f"<h4>💡 Answer:</h4><p>{answer}</p></div>", unsafe_allow_html=True)
+                         f"<h4>🤔 Question:</h4><p><em>{question_input}</em></p>"
+                         f"<h4>💡 Answer:</h4><p>{answer}</p></div>", unsafe_allow_html=True)
             
             if confidence_display:
                 st.subheader("📊 Answer Quality")
@@ -999,10 +1015,10 @@ def chatbot_component():
                 for i, message in enumerate(st.session_state.chat_history):
                     if message['role'] == 'user':
                         st.markdown(f"<div style='background: #e3f2fd; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-left: 2rem;'>"
-                                  f"<strong>🙋 You:</strong> {message['content']}</div>", unsafe_allow_html=True)
+                                     f"<strong>🙋 You:</strong> {message['content']}</div>", unsafe_allow_html=True)
                     else:
                         st.markdown(f"<div style='background: #f3e5f5; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; margin-right: 2rem;'>"
-                                  f"<strong>🤖 AI:</strong> {message['content']}</div>", unsafe_allow_html=True)
+                                     f"<strong>🤖 AI:</strong> {message['content']}</div>", unsafe_allow_html=True)
             else:
                 st.info("👋 Start a conversation! Type your message below.")
     
@@ -1278,7 +1294,7 @@ def text_to_speech_component():
             st.subheader("🌊 Audio Waveform")
             time_points = np.linspace(0, estimated_duration, int(estimated_duration * 100))
             waveform = np.sin(2 * np.pi * 2 * time_points) * np.exp(-time_points/10) + \
-                       0.5 * np.sin(2 * np.pi * 5 * time_points) * np.exp(-time_points/5)
+                             0.5 * np.sin(2 * np.pi * 5 * time_points) * np.exp(-time_points/5)
             
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=time_points, y=waveform, mode='lines', name='Waveform', line=dict(color='#667eea')))
@@ -1492,7 +1508,7 @@ with tab_stt:
     speech_to_text_component()
 
 with tab_qa:
-    question_answering_component()
+    Youtubeing_component()
 
 with tab_chatbot:
     chatbot_component()
