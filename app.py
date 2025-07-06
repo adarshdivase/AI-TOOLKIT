@@ -1069,58 +1069,52 @@ def speech_to_text_component():
     st.header("🎤 Speech to Text")
     st.write("Convert spoken audio into written text.")
     st.warning("This feature uses a self-hosted model, which may require initial download time on the backend.")
+    st.info("Live audio recording is currently disabled due to compatibility issues in the deployment environment. Please upload an audio file.")
 
-    col1, col2 = st.columns([2, 1])
+    st.subheader("📁 Audio File Upload")
+    uploaded_audio = st.file_uploader(
+        "Upload an audio file (.wav, .mp3, .flac, .m4a)", 
+        type=["wav", "mp3", "flac", "m4a"], 
+        key="stt_audio_upload",
+        help="Supported formats: WAV, MP3, FLAC, M4A"
+    )
     
-    with col1:
-        st.subheader("📁 Audio Upload")
-        uploaded_audio = st.file_uploader(
-            "Upload audio file", 
-            type=['wav', 'mp3', 'flac', 'm4a'],
-            key="stt_audio_upload",
-            help="Supported formats: WAV, MP3, FLAC, M4A"
-        )
-        
-        if uploaded_audio:
-            st.audio(uploaded_audio, format=uploaded_audio.type)
-            file_size = len(uploaded_audio.read()) / 1024
-            st.info(f"📄 File: {uploaded_audio.name} | Size: {file_size:.1f} KB")
-            uploaded_audio.seek(0)
+    if uploaded_audio:
+        st.audio(uploaded_audio, format=uploaded_audio.type)
+        file_size = len(uploaded_audio.read()) / 1024
+        st.info(f"📄 File: {uploaded_audio.name} | Size: {file_size:.1f} KB | Type: {uploaded_audio.type}")
+        uploaded_audio.seek(0) # Reset file pointer after reading size
     
-    with col2:
-        st.subheader("Recognition Settings")
-        language = st.selectbox("Language:", [
-            "English (US)", "English (UK)", "Spanish", "French", 
-            "German", "Italian", "Portuguese", "Chinese", "Japanese"
-        ], key="stt_language_select")
-        
-        enhance_accuracy = st.checkbox("Enhanced Accuracy", value=True)
-        punctuation = st.checkbox("Auto Punctuation", value=True)
-        speaker_detection = st.checkbox("Speaker Detection")
-        timestamps = st.checkbox("Include Timestamps")
-        
-        st.subheader("🎙️ Live Recording")
-        audio_bytes_recorded = st.audio_recorder("Click to record audio", key="stt_audio_recorder")
-        
-        if audio_bytes_recorded:
-            st.audio(audio_bytes_recorded, format="audio/wav")
+    st.subheader("Recognition Settings")
+    language = st.selectbox("Language:", [
+        "English (US)", "English (UK)", "Spanish", "French", 
+        "German", "Italian", "Portuguese", "Chinese", "Japanese"
+    ], key="stt_language_select")
+    
+    enhance_accuracy = st.checkbox("Enhanced Accuracy", value=True)
+    punctuation = st.checkbox("Auto Punctuation", value=True)
+    speaker_detection = st.checkbox("Speaker Detection")
+    timestamps = st.checkbox("Include Timestamps")
+    
+    # Removed st.audio_recorder due to persistent AttributeError
+    # st.subheader("🎙️ Live Recording")
+    # audio_bytes_recorded = st.audio_recorder("Click to record audio", key="stt_audio_recorder")
+    # if audio_bytes_recorded:
+    #     st.audio(audio_bytes_recorded, format="audio/wav")
 
     source_audio_data = None
     source_filename = "audio_input.wav"
     source_mime = "audio/wav"
 
-    if audio_bytes_recorded:
-        source_audio_data = audio_bytes_recorded
-        source_filename = "recorded_audio.wav"
-        source_mime = "audio/wav"
-    elif uploaded_audio:
+    # Only consider uploaded file as source
+    if uploaded_audio:
         source_audio_data = uploaded_audio.getvalue()
         source_filename = uploaded_audio.name
         source_mime = uploaded_audio.type
 
     if st.button("🔊 Convert to Text", key="stt_convert_button", use_container_width=True):
         if source_audio_data is None:
-            st.warning("Please record audio or upload an audio file to transcribe.")
+            st.warning("Please upload an audio file to transcribe.")
             return
 
         display_spinner_and_message("Converting speech to text...")
@@ -1538,15 +1532,19 @@ with tab_settings:
     )
 
     st.subheader("API Configuration (Advanced)")
-    # No 'global API_BASE' needed here. API_BASE is a module-level variable.
-    # When this code runs, it reads the current value of API_BASE.
-    # Reassigning it directly updates the module-level variable for subsequent runs within the same script execution.
-    new_api_base = st.text_input("Backend API Base URL:", value=API_BASE, key="settings_api_base_input")
-    if new_api_base != API_BASE:
-        st.warning(f"API Base URL changed from {API_BASE} to {new_api_base}. This change will apply on next rerun.")
-        # Directly reassign the module-level variable
-        globals()['API_BASE'] = new_api_base
-        st.button("Apply API Change and Rerun", key="apply_api_change")
+    # Using a temporary variable to hold the new value from text_input
+    # and then updating the module-level API_BASE if it's different.
+    # This avoids the SyntaxError about global declaration.
+    current_api_base_input = API_BASE # Read current value for the text_input
+    new_api_base_from_input = st.text_input("Backend API Base URL:", value=current_api_base_input, key="settings_api_base_input")
+    
+    if new_api_base_from_input != API_BASE:
+        st.warning(f"API Base URL changed from {API_BASE} to {new_api_base_from_input}. This change will apply on next rerun.")
+        # Update the module-level variable directly using globals()
+        globals()['API_BASE'] = new_api_base_from_input
+        # A button to force rerun after changing API_BASE, as text_input doesn't trigger rerun by itself
+        if st.button("Apply API Change and Rerun", key="apply_api_change"):
+            st.rerun() # Force a rerun to apply the new API_BASE immediately
 
 st.markdown("---")
 st.markdown("Developed with FastAPI and Streamlit.")
