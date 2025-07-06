@@ -17,7 +17,7 @@ import numpy as np
 # --- Configuration ---
 # IMPORTANT: For deployment, change this to your deployed FastAPI backend URL
 # Example: API_BASE = "https://your-backend-url.onrender.com/api"
-API_BASE_URL = "https://huggingface.co/spaces/adarshdivase/ai-toolkit-backend"
+API_BASE = "https://huggingface.co/spaces/adarshdivase/ai-toolkit-backend"
 
 st.set_page_config(
     page_title="AI Services Toolkit Pro",
