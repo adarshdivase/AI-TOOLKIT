@@ -17,7 +17,6 @@ import numpy as np
 # --- Configuration ---
 # IMPORTANT: For deployment, change this to your deployed FastAPI backend URL
 # Example: API_BASE = "https://your-backend-url.onrender.com/api"
-# In app.py
 API_BASE = "https://adarshdivase-ai-toolkit-backend.hf.space/api"
 
 st.set_page_config(
@@ -741,4 +740,409 @@ def text_to_speech_component():
                 with col1:
                     st.metric("Estimated Duration", f"{estimated_duration:.1f}s")
                 with col2:
-                    st.metric("File Size", f"{len(audio_bytes
+                    # FIX: Corrected file size display
+                    st.metric("File Size", f"{len(audio_bytes) / 1024:.1f} KB")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        label="📥 Download Audio",
+                        data=audio_bytes,
+                        file_name="generated_speech.wav",
+                        mime="audio/wav",
+                        use_container_width=True
+                    )
+                with col2:
+                    if st.button("⭐ Save to Favorites", key="save_tts_result"):
+                        add_to_favorites("Text to Speech", {
+                            'text': text_input,
+                            'audio_size_kb': f"{len(audio_bytes) / 1024:.1f} KB",
+                            'estimated_duration_s': f"{estimated_duration:.1f}s"
+                        })
+                        st.success("Saved to favorites!")
+                
+                log_to_history("Text to Speech", text_input, f"Audio generated ({len(audio_bytes) / 1024:.1f} KB)")
+                
+            except requests.exceptions.RequestException as e:
+                display_error(f"Could not generate speech: {e}")
+                log_to_history("Text to Speech", text_input, str(e), False)
+            except Exception as e:
+                display_error(f"An unexpected error occurred: {e}")
+                log_to_history("Text to Speech", text_input, str(e), False)
+
+def chatbot_component():
+    """Streamlit component for a simple Chatbot."""
+    st.header("💬 AI Chatbot")
+    st.write("Engage in a conversation with an AI assistant.")
+
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("What would you like to ask?"):
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("AI is thinking..."):
+                try:
+                    # For a real chatbot, you'd call a dedicated chatbot API
+                    # For now, it leverages the text generation model
+                    response = requests.post(
+                        f"{API_BASE}/generation/generate",
+                        json={"text": prompt},
+                        timeout=90
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    ai_response = result.get("generated_text", "I'm sorry, I couldn't generate a response.")
+                    
+                    # Basic trimming to avoid prompt repetition in simple models
+                    if ai_response.startswith(prompt):
+                        ai_response = ai_response[len(prompt):].strip()
+                        if ai_response.startswith("\n"): # Remove leading newline if present
+                            ai_response = ai_response[1:].strip()
+                    
+                    # Ensure the response is not empty after trimming
+                    if not ai_response:
+                        ai_response = "I'm sorry, I couldn't generate a meaningful response."
+
+                    st.markdown(ai_response)
+                    st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
+                    log_to_history("AI Chatbot", prompt, ai_response)
+
+                except requests.exceptions.RequestException as e:
+                    error_msg = f"Error communicating with AI: {e}"
+                    st.error(error_msg)
+                    st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
+                    log_to_history("AI Chatbot", prompt, error_msg, False)
+                except Exception as e:
+                    error_msg = f"An unexpected error occurred: {e}"
+                    st.error(error_msg)
+                    st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
+                    log_to_history("AI Chatbot", prompt, error_msg, False)
+
+def Youtubeing_component():
+    """Streamlit component for Question Answering."""
+    st.header("❓ Question Answering")
+    st.write("Get answers to your questions from provided text or general knowledge.")
+    st.info("This feature currently provides a mock response, demonstrating the API structure. A real QA model would be integrated on the backend.")
+
+    question = st.text_input(
+        "Your Question:", 
+        placeholder="e.g., What is the capital of France?",
+        help="Enter the question you want the AI to answer."
+    )
+    context = st.text_area(
+        "Provide Context (Optional):", 
+        height=150, 
+        placeholder="Paste relevant text here for contextual answers...",
+        help="If you provide context, the AI will try to answer based on it. Otherwise, it will use its general knowledge."
+    )
+
+    if st.button("🧠 Get Answer", type="primary", use_container_width=True):
+        if not question.strip():
+            st.warning("Please enter a question.")
+            return
+
+        with st.spinner("Finding answer..."):
+            try:
+                response = requests.post(
+                    f"{API_BASE}/qa/answer",
+                    json={"question": question, "context": context},
+                    timeout=45
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                st.subheader("✅ Answer")
+                st.markdown(f'<div class="content-display"><h3>{result.get("answer", "No answer found.")}</h3></div>', unsafe_allow_html=True)
+                
+                st.subheader("📊 Answer Details")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Confidence", f"{result.get('confidence', 0.0):.1%}")
+                with col2:
+                    st.metric("Sources", ", ".join(result.get('sources', ['N/A'])))
+
+                if st.button("⭐ Save QA Result", key="save_qa"):
+                    add_to_favorites("Question Answering", {
+                        'question': question,
+                        'context': context,
+                        'answer': result.get("answer"),
+                        'confidence': result.get("confidence")
+                    })
+                    st.success("Saved to favorites!")
+
+                log_to_history("Question Answering", question, result.get("answer", "N/A"))
+
+            except requests.exceptions.RequestException as e:
+                display_error(f"Error getting answer: {e}")
+                log_to_history("Question Answering", question, str(e), False)
+            except Exception as e:
+                display_error(f"An unexpected error occurred: {e}")
+                log_to_history("Question Answering", question, str(e), False)
+
+# --- Utility Components ---
+
+def history_component():
+    """Displays the history of API calls."""
+    st.header("📜 API Call History")
+    st.write("Track all your interactions with the AI services.")
+
+    if not st.session_state.history:
+        st.info("No history yet. Start interacting with the AI services!")
+        return
+
+    history_df = pd.DataFrame(st.session_state.history)
+    history_df['success'] = history_df['success'].apply(lambda x: '✅ Success' if x else '❌ Failed')
+    history_df.index += 1 # Start index from 1 for better readability
+
+    st.dataframe(history_df, use_container_width=True, height=400)
+
+    # Optional: Clear history button
+    if st.button("🗑️ Clear History", key="clear_history", type="secondary"):
+        st.session_state.history = []
+        st.session_state.api_calls_count = 0
+        st.rerun()
+        st.success("History cleared!")
+
+def favorites_component():
+    """Displays user's favorite AI results."""
+    st.header("⭐ My Favorites")
+    st.write("Your saved AI outputs for quick access.")
+
+    if not st.session_state.favorites:
+        st.info("No favorites saved yet. Click the '⭐ Save to Favorites' button on results to add them!")
+        return
+
+    for i, item in enumerate(st.session_state.favorites):
+        with st.expander(f"{item['type']} - {item['timestamp']}"):
+            st.json(item['content'])
+            if st.button(f"🗑️ Remove from Favorites", key=f"remove_fav_{i}"):
+                st.session_state.favorites.pop(i)
+                st.rerun()
+                st.success("Removed from favorites.")
+
+def user_preferences_component():
+    """Manages user preferences."""
+    st.header("⚙️ User Preferences")
+    st.write("Customize your AI Toolkit experience.")
+
+    # Theme selection (mock functionality for now)
+    st.session_state.user_preferences['theme'] = st.radio(
+        "Select Theme:",
+        options=['Light', 'Dark'],
+        index=0 if st.session_state.user_preferences['theme'] == 'Light' else 1,
+        help="This is a mock setting. Theme changes are not yet applied.",
+        key="theme_selector"
+    )
+
+    # Auto-save results to history
+    st.session_state.user_preferences['auto_save'] = st.checkbox(
+        "Automatically save results to history:",
+        value=st.session_state.user_preferences['auto_save'],
+        help="If checked, all successful AI interactions will be logged in your history.",
+        key="auto_save_checkbox"
+    )
+
+    # Display current preferences
+    st.subheader("Current Preferences:")
+    for key, value in st.session_state.user_preferences.items():
+        st.write(f"- **{key.replace('_', ' ').title()}:** {value}")
+
+    if st.button("💾 Save Preferences", type="primary"):
+        # In a real app, you'd save these to a database or file
+        st.success("Preferences saved (mock)!")
+
+def system_dashboard_component():
+    """Displays system status and basic analytics."""
+    st.header("🚀 System Dashboard")
+    st.write("Overview of backend status and API usage.")
+
+    # Backend Status
+    st.subheader("Backend AI Model Status")
+    models_loaded, error_message = get_backend_status()
+    if models_loaded:
+        st.markdown(
+            """
+            <div class="success-message">
+                <h4>✅ Backend Models Loaded and Operational!</h4>
+                <p>All AI services are ready to use.</p>
+            </div>
+            """, unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            f"""
+            <div class="error-message">
+                <h4>❌ Backend Models Not Loaded or Backend Unreachable!</h4>
+                <p>Please ensure the backend FastAPI application is running at <code>{API_BASE.replace('/api', '')}</code>.</p>
+                <p><strong>Error Details:</strong> {error_message or 'Unknown error. Check backend logs for more details.'}</p>
+            </div>
+            """, unsafe_allow_html=True
+        )
+    
+    st.subheader("API Usage Statistics")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total API Calls", st.session_state.api_calls_count)
+    with col2:
+        st.metric("Favorites Saved", len(st.session_state.favorites))
+    
+    st.subheader("Usage Over Time (Mock Data)")
+    # Generate some mock data for daily usage if not present
+    if 'daily_usage_data' not in st.session_state:
+        dates = pd.date_range(start="2023-01-01", periods=30, freq="D")
+        st.session_state.daily_usage_data = pd.DataFrame({
+            'Date': dates,
+            'API Calls': np.random.randint(5, 50, size=30)
+        })
+
+    fig = px.line(
+        st.session_state.daily_usage_data, 
+        x='Date', 
+        y='API Calls', 
+        title='Daily API Calls (Mock Data)',
+        labels={'API Calls': 'Number of Calls', 'Date': 'Date'},
+        template="plotly_white"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("Model Usage Distribution (Mock Data)")
+    # Generate mock data for model usage distribution
+    if 'model_usage_data' not in st.session_state:
+        st.session_state.model_usage_data = pd.DataFrame({
+            'Model': ['Sentiment', 'Summarization', 'Generation', 'Captioning', 'Translation', 'TTS', 'STT', 'Chatbot', 'QA'],
+            'Usage Count': np.random.randint(10, 100, size=9)
+        })
+    
+    fig_pie = px.pie(
+        st.session_state.model_usage_data, 
+        values='Usage Count', 
+        names='Model', 
+        title='AI Model Usage Distribution (Mock Data)',
+        hole=.3
+    )
+    st.plotly_chart(fig_pie, use_container_width=True)
+
+
+# --- Main Application Layout ---
+
+# Header Section
+st.markdown("""
+<div class="main-header">
+    <h1>AI Services Toolkit Pro 🤖</h1>
+    <p>Empowering your tasks with advanced AI capabilities</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Sidebar Navigation
+st.sidebar.title("🚀 Navigation")
+st.sidebar.markdown('<div class="sidebar-card">Choose an AI service or utility:</div>', unsafe_allow_html=True)
+
+menu_options = {
+    "Home": "🏠",
+    "Sentiment Analysis": "🎭",
+    "Text Summarization": "📄",
+    "Creative Text Generation": "✍️",
+    "Image Captioning": "🖼️",
+    "Language Translation": "🌍",
+    "Text to Speech": "🔊",
+    "Speech to Text": "🎤",
+    "AI Chatbot": "💬",
+    "Question Answering": "❓",
+    "---": "---", # Separator
+    "API Call History": "📜",
+    "My Favorites": "⭐",
+    "User Preferences": "⚙️",
+    "System Dashboard": "🚀"
+}
+
+# Add a selectbox for navigation, or use buttons/radio for more direct navigation
+selected_option = st.sidebar.radio(
+    "Select a service:",
+    options=list(menu_options.keys()),
+    format_func=lambda x: f"{menu_options[x]} {x}" if x != "---" else "---",
+    key="main_menu_selector"
+)
+
+# Content Display based on selection
+st.markdown("---")
+
+if selected_option == "Home":
+    st.header("Welcome to the AI Services Toolkit Pro!")
+    st.write("""
+        This application provides a comprehensive suite of AI tools, all powered by a self-hosted FastAPI backend.
+        Explore various capabilities from natural language processing to speech and image analysis.
+    """)
+    st.markdown("---")
+    st.subheader("Key Features:")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown('<div class="feature-card"><h4>Text Analysis</h4><p>Sentiment, Summarization, Generation, Translation</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="feature-card"><h4>Speech AI</h4><p>Text-to-Speech (TTS) & Speech-to-Text (STT)</p></div>', unsafe_allow_html=True)
+    with col2:
+        st.markdown('<div class="feature-card"><h4>Image Intelligence</h4><p>Automatic Image Captioning</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="feature-card"><h4>Interactive AI</h4><p>AI Chatbot & Question Answering</p></div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("Backend Status:")
+    models_loaded_home, error_message_home = get_backend_status()
+    if models_loaded_home:
+        st.markdown('<p class="success-message"><strong>Backend AI Models are loaded and ready!</strong> Start exploring the tools.</p>', unsafe_allow_html=True)
+    else:
+        st.markdown(
+            f'<p class="error-message"><strong>Backend AI Models are NOT loaded or backend is unreachable.</strong> Please ensure your FastAPI server is running. Error: {error_message_home}</p>', 
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+    st.subheader("How to Use:")
+    st.write("""
+    1. **Select a Service** from the sidebar.
+    2. **Input your data** (text, image, or audio) into the designated area.
+    3. **Click the "Analyze" or "Generate" button** to process.
+    4. **View Results** and utilize options like download or save to favorites.
+    """)
+    
+    st.info("💡 **Tip:** Check the 'System Dashboard' for backend health and usage statistics!")
+
+elif selected_option == "Sentiment Analysis":
+    sentiment_analysis_component()
+elif selected_option == "Text Summarization":
+    text_summarization_component()
+elif selected_option == "Creative Text Generation":
+    text_generation_component()
+elif selected_option == "Image Captioning":
+    image_captioning_component()
+elif selected_option == "Language Translation":
+    translation_component()
+elif selected_option == "Text to Speech":
+    text_to_speech_component()
+elif selected_option == "Speech to Text":
+    speech_to_text_component()
+elif selected_option == "AI Chatbot":
+    chatbot_component()
+elif selected_option == "Question Answering":
+    Youtubeing_component()
+elif selected_option == "API Call History":
+    history_component()
+elif selected_option == "My Favorites":
+    favorites_component()
+elif selected_option == "User Preferences":
+    user_preferences_component()
+elif selected_option == "System Dashboard":
+    system_dashboard_component()
+
+# Footer
+st.markdown("---")
+st.markdown(
+    """
+    <div style="text-align: center; color: gray;">
+        <p>AI Services Toolkit Pro v1.4.1 | Developed by Adarsh Divase</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
