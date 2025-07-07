@@ -24,3 +24,4 @@
     numpy==1.24.3
     python-multipart==0.0.6
     sacremoses==0.1.1
+    scipy==1.11.4
