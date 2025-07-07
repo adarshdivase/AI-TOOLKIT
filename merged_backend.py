@@ -12,16 +12,16 @@ import numpy as np # For numerical operations, especially with audio data
 from scipy.io import wavfile # For writing WAV files to BytesIO
 import wave # Fallback for WAV writing
 
-import torch # New: For SpeechT5 speaker embeddings and general PyTorch operations
-from datasets import load_dataset # New: For SpeechT5 speaker embeddings
-import librosa # New: For audio resampling in STT
+import torch # For SpeechT5 speaker embeddings and general PyTorch operations
+from datasets import load_dataset # For SpeechT5 speaker embeddings
+import librosa # For audio resampling in STT
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI(
     title="Professional AI Toolkit (Python 3.10+)", # Adjusted Python version for broader compatibility
     description="A suite of high-performance, self-hosted AI models including TTS/STT.",
-    version="1.4.4", # Updated version to reflect all recent model and logic improvements
+    version="1.4.5", # Updated version to reflect real QA model integration
 )
 
 app.add_middleware(
@@ -58,7 +58,6 @@ def load_models():
         logging.info("Image Captioning model loaded.")
 
         # Updated: Text Generation model for Chatbot functionality
-        # Switched to microsoft/DialoGPT-medium for better conversational ability.
         models["generator"] = pipeline("text-generation", model="microsoft/DialoGPT-medium")
         logging.info("Text Generation (DialoGPT-medium) model loaded for Chatbot.")
 
@@ -67,17 +66,18 @@ def load_models():
         logging.info("Text-to-Speech model (microsoft/speecht5_tts) loaded.")
 
         # Load a default speaker embedding for SpeechT5.
-        # This dataset contains x-vectors (speaker embeddings) from various speakers.
-        # We'll pick a fixed speaker (index 7306 is a commonly used one for a clear voice).
-        # This is a small dataset and should load quickly.
         embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
         models["tts_speaker_embedding"] = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
         logging.info("Default SpeechT5 speaker embedding loaded.")
 
         # New: Speech-to-Text (Automatic Speech Recognition) model
-        # Using 'openai/whisper-tiny' for STT. This model transcribes audio to text.
         models["stt"] = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
         logging.info("Speech-to-Text model loaded.")
+
+        # New: Question Answering model
+        # Using a distilled BERT model fine-tuned on SQuAD for extractive QA.
+        models["qa_model"] = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
+        logging.info("Question Answering model loaded.")
 
         MODELS_LOADED = True
         logging.info("All models loaded successfully.")
@@ -107,7 +107,7 @@ class TranscriptionOut(BaseModel):
 class QuestionAnsweringIn(BaseModel):
     """Pydantic model for Question Answering input."""
     question: str
-    context: str = "" # Context is optional
+    context: str = "" # Context is optional, but required for extractive QA models
 
 class QuestionAnsweringOut(BaseModel):
     """Pydantic model for Question Answering output."""
@@ -340,27 +340,35 @@ async def speech_to_text(file: UploadFile = File(...)):
 @api_router.post("/qa/answer", response_model=QuestionAnsweringOut)
 def answer_question(payload: QuestionAnsweringIn):
     """
-    Provides an answer to a question based on an optional context.
-    (Currently uses mock data as no specific QA model is loaded)
+    Provides an answer to a question based on a provided context.
+    Now uses a real Question Answering model. Context is required for meaningful answers.
     """
     try:
-        # In a real scenario, you would use a QA model here, e.g.:
-        # if not MODELS_LOADED:
-        #     raise HTTPException(status_code=503, detail="Models are not loaded yet. Please wait.")
-        # qa_model_output = models["qa_model"](question=payload.question, context=payload.context)
-        # answer = qa_model_output['answer']
-        # confidence = qa_model_output['score']
-        # sources = ["Mock Source 1", "Mock Source 2"] # Replace with actual source extraction
+        if not MODELS_LOADED:
+            raise HTTPException(status_code=503, detail="Models are not loaded yet. Please wait.")
 
-        # Mock response for demonstration
-        if payload.context:
-            answer_text = f"Based on the provided context, the answer to '{payload.question}' is a mock response demonstrating context awareness."
-        else:
-            answer_text = f"For the question '{payload.question}', here is a general mock answer."
+        # For extractive QA models, context is crucial.
+        if not payload.context or not payload.context.strip():
+            return QuestionAnsweringOut(
+                answer="Please provide a context to answer the question. This model requires text to find an answer within.",
+                confidence=0.0,
+                sources=[]
+            )
+
+        # Use the loaded Question Answering model
+        qa_output = models["qa_model"](question=payload.question, context=payload.context)
+        
+        answer = qa_output['answer']
+        confidence = qa_output['score']
+        
+        # Extractive QA models typically don't provide "sources" beyond the given context,
+        # but you can indicate the context itself as a source if desired.
+        sources = ["Provided Context"] 
+
         return QuestionAnsweringOut(
-            answer=answer_text,
-            confidence=0.85, # Mock confidence
-            sources=["Mock Source: Wikipedia", "Mock Source: Research Paper"] # Mock sources
+            answer=answer,
+            confidence=confidence,
+            sources=sources
         )
     except Exception as e:
         logging.error(f"Error in Question Answering: {e}", exc_info=True)
