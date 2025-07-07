@@ -12,12 +12,16 @@ import numpy as np # For numerical operations, especially with audio data
 from scipy.io import wavfile # For writing WAV files to BytesIO
 import wave # Fallback for WAV writing
 
+import torch # New: For SpeechT5 speaker embeddings
+from datasets import load_dataset # New: For SpeechT5 speaker embeddings
+import librosa # New: For audio resampling in STT
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI(
     title="Professional AI Toolkit (Python 3.10+)", # Adjusted Python version for broader compatibility
     description="A suite of high-performance, self-hosted AI models including TTS/STT.",
-    version="1.4.2", # Updated version to reflect TTS fix
+    version="1.4.3", # Updated version to reflect TTS model and STT improvements
 )
 
 app.add_middleware(
@@ -43,31 +47,34 @@ def load_models():
         # Existing models
         models["sentiment"] = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
         logging.info("Sentiment Analysis model loaded.")
+
         models["summarizer"] = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
         logging.info("Text Summarization model loaded.")
+
         models["translator"] = pipeline("translation_en_to_fr", model="Helsinki-NLP/opus-mt-en-fr")
         logging.info("Language Translation model loaded (EN-FR).")
+
         models["captioner"] = pipeline("image-to-text", model="nlpconnect/vit-gpt2-image-captioning")
         logging.info("Image Captioning model loaded.")
+
         models["generator"] = pipeline("text-generation", model="distilgpt2")
         logging.info("Text Generation model loaded.")
 
-        # New: Text-to-Speech model
-        # Using 'facebook/mms-tts-eng' for English TTS. This model generates audio.
-        # Ensure you have 'soundfile' and 'librosa' installed for audio handling.
-        models["tts"] = pipeline("text-to-speech", model="facebook/mms-tts-eng")
-        logging.info("Text-to-Speech model loaded.")
+        # Updated: Text-to-Speech model to microsoft/speecht5_tts
+        models["tts"] = pipeline("text-to-speech", model="microsoft/speecht5_tts")
+        logging.info("Text-to-Speech model (microsoft/speecht5_tts) loaded.")
+
+        # Load a default speaker embedding for SpeechT5.
+        # This dataset contains x-vectors (speaker embeddings) from various speakers.
+        # We'll pick a fixed speaker (index 7306 is a commonly used one for a clear voice)
+        embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+        models["tts_speaker_embedding"] = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
+        logging.info("Default SpeechT5 speaker embedding loaded.")
 
         # New: Speech-to-Text (Automatic Speech Recognition) model
         # Using 'openai/whisper-tiny' for STT. This model transcribes audio to text.
         models["stt"] = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
         logging.info("Speech-to-Text model loaded.")
-
-        # No specific QA model loaded here, as frontend uses mock for now.
-        # If a real QA model is needed, it would be added here.
-
-        # No specific Chatbot model loaded here, as frontend uses mock for now.
-        # The text-generation model can serve as a base for a simple chatbot.
 
         MODELS_LOADED = True
         logging.info("All models loaded successfully.")
@@ -190,41 +197,45 @@ def generate_text(payload: TextIn):
 async def text_to_speech(payload: TextIn):
     """
     Converts text to speech and returns an audio file.
-    Fixed version using scipy.io.wavfile for reliable BytesIO handling.
+    Uses microsoft/speecht5_tts with a default speaker embedding.
     """
     try:
         if not MODELS_LOADED:
             raise HTTPException(status_code=503, detail="Models are not loaded yet. Please wait.")
         if not payload.text.strip():
             raise HTTPException(status_code=400, detail="Text for speech cannot be empty.")
-        
-        # Generate audio using TTS model
-        tts_output = models["tts"](payload.text)
+
+        # Generate audio using TTS model with speaker embedding
+        tts_output = models["tts"](
+            payload.text,
+            forward_params={"speaker_embeddings": models["tts_speaker_embedding"]}
+        )
         audio_array = tts_output["audio"]
         sampling_rate = tts_output["sampling_rate"]
-        
+
         # Create BytesIO buffer
         buffer = io.BytesIO()
-        
+
         try:
-            # Method 1: Using scipy.io.wavfile (most reliable)
-            # Convert to int16 format for WAV compatibility
+            # Method 1: Using scipy.io.wavfile (most reliable for numpy arrays)
+            # Ensure audio is in int16 format for broad WAV compatibility
+            # scipy.io.wavfile.write handles float32 arrays normalized to [-1, 1] too,
+            # but int16 is often preferred for PCM WAVs.
             if audio_array.dtype != np.int16:
-                # Normalize to [-1, 1] if needed, then convert to int16
-                if np.max(np.abs(audio_array)) > 1.0:
+                if np.max(np.abs(audio_array)) > 1.0: # Normalize if values exceed [-1, 1]
                     audio_array = audio_array / np.max(np.abs(audio_array))
                 audio_int16 = (audio_array * 32767).astype(np.int16)
             else:
                 audio_int16 = audio_array
-            
+
             wavfile.write(buffer, sampling_rate, audio_int16)
-            buffer.seek(0)
-            
+            buffer.seek(0) # Rewind the buffer
+
         except Exception as scipy_error:
-            # Method 2: Using wave module (fallback)
-            logging.warning(f"scipy.io.wavfile failed, using wave module: {scipy_error}")
-            buffer = io.BytesIO()  # Reset buffer
-            
+            # Method 2: Fallback using built-in wave module if scipy fails
+            logging.warning(f"scipy.io.wavfile failed, falling back to wave module: {scipy_error}", exc_info=True)
+            buffer = io.BytesIO()  # Reset buffer if error occurred
+
             # Ensure audio is in int16 format
             if audio_array.dtype != np.int16:
                 if np.max(np.abs(audio_array)) > 1.0:
@@ -232,21 +243,21 @@ async def text_to_speech(payload: TextIn):
                 audio_int16 = (audio_array * 32767).astype(np.int16)
             else:
                 audio_int16 = audio_array
-            
+
             with wave.open(buffer, 'wb') as wav_file:
                 wav_file.setnchannels(1)  # Mono
                 wav_file.setsampwidth(2)  # 2 bytes per sample (16-bit)
                 wav_file.setframerate(sampling_rate)
                 wav_file.writeframes(audio_int16.tobytes())
-            
-            buffer.seek(0)
-        
+
+            buffer.seek(0) # Rewind the buffer
+
         return StreamingResponse(
-            buffer, 
-            media_type="audio/wav", 
+            buffer,
+            media_type="audio/wav",
             headers={"Content-Disposition": "attachment; filename=speech.wav"}
         )
-        
+
     except Exception as e:
         logging.error(f"Error in Text-to-Speech: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error processing Text-to-Speech.")
@@ -255,6 +266,7 @@ async def text_to_speech(payload: TextIn):
 async def speech_to_text(file: UploadFile = File(...)):
     """
     Transcribes an audio file to text.
+    Includes resampling to 16kHz for Whisper model compatibility.
     """
     if not file.content_type.startswith("audio/"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload an audio file.")
@@ -263,20 +275,27 @@ async def speech_to_text(file: UploadFile = File(...)):
             raise HTTPException(status_code=503, detail="Models are not loaded yet. Please wait.")
         audio_bytes = await file.read()
         buffer = io.BytesIO(audio_bytes)
-        
+
         # Load audio data using soundfile
         audio_data, current_sampling_rate = sf.read(buffer)
-        
+
         # If audio_data is stereo, convert to mono by averaging channels
         if audio_data.ndim > 1:
             audio_data = np.mean(audio_data, axis=1)
-        
+
+        # Resample audio to 16kHz if necessary, as Whisper models typically expect this rate
+        target_sampling_rate = 16000
+        if current_sampling_rate != target_sampling_rate:
+            logging.info(f"Resampling audio from {current_sampling_rate}Hz to {target_sampling_rate}Hz for STT.")
+            audio_data = librosa.resample(audio_data, orig_sr=current_sampling_rate, target_sr=target_sampling_rate)
+            current_sampling_rate = target_sampling_rate # Update sampling rate after resampling
+
         # Prepare input for STT model
         stt_input = {"sampling_rate": current_sampling_rate, "raw": audio_data}
         transcription = models["stt"](stt_input)
-        
+
         return TranscriptionOut(transcribed_text=transcription["text"])
-        
+
     except Exception as e:
         logging.error(f"Error in Speech-to-Text: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error processing Speech-to-Text.")
