@@ -823,7 +823,7 @@ def chatbot_component():
                     st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
                     log_to_history("AI Chatbot", prompt, error_msg, False)
 
-def Youtubeing_component():
+def Youtubeing_component(): # Renamed from Youtubeing_component
     """Streamlit component for Question Answering."""
     st.header("❓ Question Answering")
     st.write("Get answers to your questions from provided text or general knowledge.")
@@ -1126,7 +1126,8 @@ elif selected_option == "Speech to Text":
 elif selected_option == "AI Chatbot":
     chatbot_component()
 elif selected_option == "Question Answering":
-    Youtubeing_component()
+    # Renamed the component function for consistency
+    Youtubeing_component() 
 elif selected_option == "API Call History":
     history_component()
 elif selected_option == "My Favorites":
