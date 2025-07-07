@@ -12,7 +12,7 @@ import numpy as np # For numerical operations, especially with audio data
 from scipy.io import wavfile # For writing WAV files to BytesIO
 import wave # Fallback for WAV writing
 
-import torch # New: For SpeechT5 speaker embeddings
+import torch # New: For SpeechT5 speaker embeddings and general PyTorch operations
 from datasets import load_dataset # New: For SpeechT5 speaker embeddings
 import librosa # New: For audio resampling in STT
 
@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 app = FastAPI(
     title="Professional AI Toolkit (Python 3.10+)", # Adjusted Python version for broader compatibility
     description="A suite of high-performance, self-hosted AI models including TTS/STT.",
-    version="1.4.3", # Updated version to reflect TTS model and STT improvements
+    version="1.4.4", # Updated version to reflect all recent model and logic improvements
 )
 
 app.add_middleware(
@@ -57,8 +57,10 @@ def load_models():
         models["captioner"] = pipeline("image-to-text", model="nlpconnect/vit-gpt2-image-captioning")
         logging.info("Image Captioning model loaded.")
 
-        models["generator"] = pipeline("text-generation", model="distilgpt2")
-        logging.info("Text Generation model loaded.")
+        # Updated: Text Generation model for Chatbot functionality
+        # Switched to microsoft/DialoGPT-medium for better conversational ability.
+        models["generator"] = pipeline("text-generation", model="microsoft/DialoGPT-medium")
+        logging.info("Text Generation (DialoGPT-medium) model loaded for Chatbot.")
 
         # Updated: Text-to-Speech model to microsoft/speecht5_tts
         models["tts"] = pipeline("text-to-speech", model="microsoft/speecht5_tts")
@@ -66,7 +68,8 @@ def load_models():
 
         # Load a default speaker embedding for SpeechT5.
         # This dataset contains x-vectors (speaker embeddings) from various speakers.
-        # We'll pick a fixed speaker (index 7306 is a commonly used one for a clear voice)
+        # We'll pick a fixed speaker (index 7306 is a commonly used one for a clear voice).
+        # This is a small dataset and should load quickly.
         embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
         models["tts_speaker_embedding"] = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
         logging.info("Default SpeechT5 speaker embedding loaded.")
@@ -85,8 +88,12 @@ def load_models():
         # if critical models fail to load.
 
 class TextIn(BaseModel):
-    """Pydantic model for text input."""
+    """
+    Pydantic model for text input, now with an optional chat_history field
+    to support conversational AI models.
+    """
     text: str
+    chat_history: list[str] = [] # Optional: For sending conversational context to backend
 
 class TranslationOut(BaseModel):
     """Pydantic model for translation output."""
@@ -180,15 +187,45 @@ async def caption_image(file: UploadFile = File(...)):
 @api_router.post("/generation/generate")
 def generate_text(payload: TextIn):
     """
-    Generates text based on a given prompt.
+    Generates text based on a given prompt or continues a conversation for the chatbot.
+    For chatbot use, `payload.text` should contain the concatenated conversational context.
     """
     try:
         if not MODELS_LOADED:
             raise HTTPException(status_code=503, detail="Models are not loaded yet. Please wait.")
         if not payload.text.strip():
             raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
-        generated = models["generator"](payload.text, max_length=100, num_return_sequences=1)
-        return {"generated_text": generated[0]["generated_text"]}
+
+        # For conversational models like DialoGPT, the input usually consists of
+        # concatenated turns. The 'text-generation' pipeline will try to complete this.
+        # The frontend should construct `payload.text` to contain the full conversation context.
+        
+        # DialoGPT specific generation parameters
+        generated = models["generator"](
+            payload.text,
+            max_length=150, # Increased max_length for longer responses
+            num_return_sequences=1,
+            pad_token_id=models["generator"].tokenizer.eos_token_id, # Essential for DialoGPT
+            do_sample=True, # Allow sampling for more diverse responses
+            top_k=50,       # Top-K sampling
+            top_p=0.95,     # Nucleus sampling
+            temperature=0.7 # Controls randomness (0.0 for deterministic, higher for more creative)
+        )
+        
+        ai_response = generated[0]["generated_text"]
+
+        # Post-processing for DialoGPT: The model might regenerate the input prompt.
+        # We need to extract only the new response.
+        if ai_response.startswith(payload.text):
+            ai_response = ai_response[len(payload.text):].strip()
+            # DialoGPT often generates its own End-Of-Text token, split by it.
+            ai_response = ai_response.split(models["generator"].tokenizer.eos_token)[0].strip()
+
+        # Ensure response is not empty after trimming
+        if not ai_response:
+            ai_response = "I'm sorry, I couldn't generate a meaningful response based on that input."
+        
+        return {"generated_text": ai_response}
     except Exception as e:
         logging.error(f"Error in text generation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error processing text generation.")
